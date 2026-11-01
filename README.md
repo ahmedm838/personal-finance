@@ -17,8 +17,7 @@ Pages serves static files only, so that copy has no server behind it:
 `docs/finance.xlsx` is read into the page with SheetJS and the calculations run
 in JavaScript. Edits are held in that browser's local storage, and are
 committed back to this repo once you connect a token — see below. "Download
-.xlsx" takes a copy, "Reset" discards local changes and reloads the committed
-figures.
+.xlsx" takes a copy of the current figures.
 
 ### Saving from the live site
 
@@ -45,6 +44,34 @@ Worth knowing:
 - Only `docs/finance.xlsx` is written. The local `data/finance.xlsx` is a
   separate, encrypted file and does not change — run `npm run pull:pages` to
   bring live edits into it.
+- If the token is ever rejected — expired, revoked, deleted — the app forgets
+  it and the Connect button comes back, so a dead token never sits there
+  failing silently. To remove one deliberately, clear site data for
+  `ahmedm838.github.io` in your browser.
+
+### Exchange rates
+
+The balance sheet shows **USD Ex. Rate** and **EUR Ex. Rate**, and values every
+foreign holding at them, so equity moves with the rate.
+
+They are published to `docs/rates.json` by `.github/workflows/rates.yml`, which
+runs on weekday mornings and commits only when a figure actually moved. Fetch
+them by hand with:
+
+```bash
+npm run fetch:rates
+```
+
+The source is `open.er-api.com`. The Central Bank of Egypt's own page was the
+first choice, but it sits behind a WAF that rejects automated requests, and
+getting around that is not something worth building on. The open API carries
+market mid rates, which run close to the CBE sell price but are not the same
+number — about 0.17% below it when this was set up.
+
+If `rates.json` is missing, or the rates in it are not usable numbers, the
+`usd_rate` and `eur_rate` rows in Settings are used instead, and the balance
+sheet says so under the cards. The fetch refuses to publish a rate outside a
+plausible range rather than let a bad figure rewrite the whole statement.
 
 ## Running it
 
@@ -132,7 +159,7 @@ against the values the original workbook had. All 19 match as imported.
 | --- | --- |
 | Balance sheet asset & liability lines | Sum of `Entries` rows per account |
 | Equity / Profit & loss | Assets − liabilities, then − capital paid |
-| Entry amount, foreign currency | FX amount × the rate in Settings |
+| Entry amount, foreign currency | FX amount × the published rate (Settings as fallback) |
 | Entry amount, EGP deposits | `DepositsEGP` total |
 | Entry amount, USD deposits | `DepositsUSD` total × USD rate |
 | Deposit monthly interest | Amount × rate ÷ 12 |
@@ -167,6 +194,8 @@ scripts/import.js       One-time import from the original workbook
 scripts/verify.js       Reconciliation against the original figures
 scripts/build-pages.js  Builds docs/ for GitHub Pages
 scripts/pull-pages.js   Takes live edits back into the local database
+scripts/fetch-rates.js  Publishes docs/rates.json
+.github/workflows/      The scheduled rate fetch
 public/                 Front end (no build step)
 data/finance.xlsx       The local database, encrypted
 docs/                   The published site, committed

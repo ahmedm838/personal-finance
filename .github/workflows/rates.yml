@@ -1,0 +1,39 @@
+name: Update exchange rates
+
+# The balance sheet values USD and EUR holdings at whatever this publishes, so
+# it runs on weekday mornings and commits only when a figure actually moved.
+on:
+  schedule:
+    - cron: '20 6 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rates
+  cancel-in-progress: false
+
+jobs:
+  rates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: node scripts/fetch-rates.js
+
+      - name: Commit when the rates moved
+        run: |
+          if git diff --quiet -- docs/rates.json; then
+            echo "Rates unchanged; nothing to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/rates.json
+          git commit -m "Update exchange rates"
+          git push

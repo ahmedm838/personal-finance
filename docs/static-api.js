@@ -121,6 +121,7 @@ const tables = {
 
   DepositsEGP: {
     label: 'EGP Deposits',
+    rowEditor: true,
     columns: [
       { key: 'bank', label: 'Bank', type: 'text', width: 90 },
       { key: 'serial', label: 'Serial', type: 'text' },
@@ -138,6 +139,7 @@ const tables = {
 
   DepositsUSD: {
     label: 'USD Deposits',
+    rowEditor: true,
     columns: [
       { key: 'bank', label: 'Holder', type: 'text', width: 90 },
       { key: 'serial', label: 'Serial', type: 'text' },
@@ -274,7 +276,7 @@ const balanceSheet = {
   ],
   liabilities: [
     { section: 'Current Liabilities', lines: ['Credit Cards', 'A/P'] },
-    { section: 'Non-current Liabilities', lines: ['Loans', 'Installments'] },
+    { section: 'Non-current Liabilities', lines: [{ account: 'Loans', label: 'Debts' }, 'Installments'] },
   ],
 };
 
@@ -410,10 +412,13 @@ function dayOfMonth(iso) {
  * Order matters: deposits feed the ledger entries, the ledger feeds the balance
  * sheet, and bills/fees/fuel feed the monthly expense lines.
  */
-function compute(db) {
+function compute(db, rates) {
   const s = settingsMap(db.Settings);
-  const usdRate = s.usd_rate || 0;
-  const eurRate = s.eur_rate || 0;
+  // A published rate wins; the Settings figures are the fallback when the
+  // scheduled fetch has not run or could not reach the source.
+  const live = rates && Number.isFinite(rates.usd) && Number.isFinite(rates.eur) ? rates : null;
+  const usdRate = live ? live.usd : s.usd_rate || 0;
+  const eurRate = live ? live.eur : s.eur_rate || 0;
 
   // --- Deposits -----------------------------------------------------------
   for (const name of ['DepositsEGP', 'DepositsUSD']) {
@@ -470,8 +475,13 @@ function compute(db) {
     byAccount[r.account] = (byAccount[r.account] || 0) + num(r.amount);
   }
 
+  // A line is either an account name, or { account, label } when the balance
+  // sheet calls it something other than the chart of accounts does.
   const buildSide = (groups) => groups.map((g) => {
-    const lines = g.lines.map((name) => ({ label: name, amount: byAccount[name] || 0 }));
+    const lines = g.lines.map((line) => {
+      const account = typeof line === 'string' ? line : line.account;
+      return { label: typeof line === 'string' ? line : line.label || account, amount: byAccount[account] || 0 };
+    });
     return { section: g.section, total: lines.reduce((t, l) => t + l.amount, 0), lines };
   });
 
@@ -515,6 +525,9 @@ function compute(db) {
       expensesTotal,
       usdRate,
       eurRate,
+      rateIsLive: Boolean(live),
+      rateSource: live ? live.source : 'Settings',
+      rateFetched: live ? live.fetched : null,
     },
   };
 }
@@ -558,6 +571,7 @@ const PASSWORD = '9987';
 const realFetch = window.fetch.bind(window);
 
 let db = null;
+let rates = null;
 let authed = sessionStorage.getItem(AUTH_KEY) === '1';
 
 class ApiError extends Error {
@@ -567,7 +581,20 @@ class ApiError extends Error {
   }
 }
 
+/** Rates published by the scheduled workflow, if the fetch has ever run. */
+async function loadRates() {
+  if (rates !== null) return rates;
+  try {
+    const res = await realFetch(new URL('rates.json', document.baseURI).href, { cache: 'no-store' });
+    rates = res.ok ? await res.json() : false;
+  } catch {
+    rates = false;
+  }
+  return rates;
+}
+
 async function loadDb() {
+  await loadRates();
   if (db) return db;
 
   const saved = localStorage.getItem(STORE_KEY);
@@ -610,7 +637,7 @@ function workbook() {
 
 /** The full application payload: schema, rows, totals and everything derived. */
 function payload() {
-  const { balance, derived } = compute(db);
+  const { balance, derived } = compute(db, rates || null);
   const data = {};
   for (const name of Object.keys(tables)) {
     data[name] = { rows: db[name] || [], totals: tableTotals(name, db[name] || []) };
@@ -748,9 +775,10 @@ function setStatus(text, bad = false) {
   node.classList.toggle('error', bad);
 }
 
+/** Only an entry point: once connected, the status line carries the state. */
 function renderSyncButton() {
   const node = $id('github');
-  if (node) node.textContent = token ? 'Disconnect' : 'Connect GitHub';
+  if (node) node.hidden = Boolean(token);
 }
 
 async function gh(path, init = {}) {
@@ -763,7 +791,11 @@ async function gh(path, init = {}) {
     },
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.message || `GitHub returned ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(body.message || `GitHub returned ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
   return body;
 }
 
@@ -815,7 +847,13 @@ async function push() {
     setStatus(`Saved ${new Date().toLocaleTimeString()}`);
   } catch (e) {
     dirty = true;
-    setStatus(`Save failed — ${e.message}`, true);
+    if (e.status === 401) {
+      // An expired or revoked token will not start working on a retry.
+      forgetToken();
+      setStatus('Token rejected — connect again', true);
+    } else {
+      setStatus(`Save failed — ${e.message}`, true);
+    }
   } finally {
     saving = false;
     if (dirty) scheduleSave();
@@ -855,19 +893,17 @@ async function connect() {
   }
 }
 
-function disconnect() {
-  if (!confirm('Forget the GitHub token stored in this browser?')) return;
+function forgetToken() {
   token = '';
   fileSha = null;
   clearTimeout(saveTimer);
   localStorage.removeItem(TOKEN_KEY);
-  setStatus('Not connected');
   renderSyncButton();
 }
 
 // --- Header actions ---------------------------------------------------------
 
-$id('github').addEventListener('click', () => (token ? disconnect() : connect()));
+$id('github').addEventListener('click', connect);
 
 $id('download').addEventListener('click', async () => {
   await loadDb();
@@ -878,11 +914,6 @@ $id('download').addEventListener('click', async () => {
   URL.revokeObjectURL(url);
 });
 
-$id('reset').addEventListener('click', () => {
-  if (!confirm('Discard your changes and reload the figures committed in the repo?')) return;
-  localStorage.removeItem(STORE_KEY);
-  location.reload();
-});
 
 renderSyncButton();
 setStatus(token ? 'Connected' : 'Not connected');

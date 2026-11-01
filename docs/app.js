@@ -145,6 +145,43 @@ function isDerivedHere(tableName, col, row) {
   return false;
 }
 
+/**
+ * A form for one whole row. Cell-by-cell editing stays the quick path; this
+ * is for tables wide enough that picking out a single cell is fiddly, and it
+ * sends one request instead of one per field.
+ */
+function openRowEditor(tableName, index) {
+  const def = state.schema[tableName];
+  const row = state.data[tableName].rows[index];
+  const draft = {};
+
+  const fields = def.columns
+    .filter((col) => !col.computed && !col.readOnly && !isDerivedHere(tableName, col, row))
+    .map((col) => el('label', { className: 'field' }, [
+      el('span', { textContent: col.label }),
+      cellEditor(col, row[col.key], (v) => { draft[col.key] = v; }),
+    ]));
+
+  const dlg = el('dialog', { className: 'row-editor' });
+  const cancel = el('button', { className: 'btn ghost', textContent: 'Cancel', type: 'button' });
+  const save = el('button', { className: 'btn primary', textContent: 'Save', type: 'button' });
+
+  cancel.addEventListener('click', () => dlg.close());
+  save.addEventListener('click', () => {
+    dlg.close();
+    if (Object.keys(draft).length) mutate('PATCH', `/api/${tableName}/rows/${index}`, draft, 'Row updated');
+  });
+  dlg.addEventListener('close', () => dlg.remove());
+
+  dlg.append(
+    el('h2', { textContent: `Edit ${def.label}` }),
+    el('div', { className: 'fields' }, fields),
+    el('div', { className: 'dialog-actions' }, [cancel, save]),
+  );
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
 // --- Table rendering --------------------------------------------------------
 
 function renderGrid(name) {
@@ -181,12 +218,20 @@ function renderGrid(name) {
       tr.append(td);
     }
 
+    const actions = [];
+    if (def.rowEditor) {
+      const edit = el('button', { className: 'icon-btn edit', textContent: '✎', title: 'Edit row', type: 'button' });
+      edit.addEventListener('click', () => openRowEditor(name, i));
+      actions.push(edit);
+    }
+
     const del = el('button', { className: 'icon-btn', textContent: '✕', title: 'Delete row', type: 'button' });
     del.addEventListener('click', () => {
       const label = row[def.columns[0].key] || `row ${i + 1}`;
       if (confirm(`Delete "${label}"?`)) mutate('DELETE', `/api/${name}/rows/${i}`, null, 'Row deleted');
     });
-    tr.append(el('td', { className: 'actions-cell' }, del));
+    actions.push(del);
+    tr.append(el('td', { className: 'actions-cell' }, actions));
     tbody.append(tr);
   });
 
@@ -282,6 +327,8 @@ function sideTable(title, groups, total) {
 function renderBalance() {
   const b = state.balance;
   const s = b.summary;
+  const d = state.derived;
+  const rate = (v) => (isNum(v) ? v.toFixed(4) : '—');
   const frag = document.createDocumentFragment();
 
   const card = (k, v, cls = '') => el('div', { className: 'card' }, [
@@ -296,11 +343,20 @@ function renderBalance() {
     card('Return on capital', fmt.percent(s.overYears), s.overYears >= 0 ? 'pos' : 'neg'),
     card('Years tracked', s.years.toFixed(2)),
     card('Average per year', fmt.percent(s.averagePerYear)),
+    card('USD Ex. Rate', rate(d.usdRate)),
+    card('EUR Ex. Rate', rate(d.eurRate)),
   ]));
 
   frag.append(el('p', {
     className: 'hint',
     textContent: 'Assets and liabilities are calculated from the Assets & Liabilities tab. Capital is editable below.',
+  }));
+
+  frag.append(el('p', {
+    className: 'hint',
+    textContent: d.rateIsLive
+      ? `USD and EUR holdings are valued at these rates, from ${d.rateSource}, fetched ${new Date(d.rateFetched).toLocaleString()}.`
+      : 'No published rates were found, so the rates in Settings are being used.',
   }));
 
   frag.append(el('div', { className: 'columns' }, [

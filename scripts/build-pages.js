@@ -20,6 +20,7 @@ const { load } = require('../lib/workbook');
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'docs');
 const PUBLISHED = path.join(OUT, 'finance.xlsx');
+const RATES = path.join(OUT, 'rates.json');
 const XLSX_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
 const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim();
@@ -80,7 +81,6 @@ function buildHtml() {
       '<span class="muted" id="sync-status">Not connected</span>',
       '      <button class="btn ghost" id="github">Connect GitHub</button>',
       '      <button class="btn ghost" id="download">Download .xlsx</button>',
-      '      <button class="btn ghost" id="reset" title="Discard local changes">Reset</button>',
     ].join('\n'),
   );
 
@@ -118,8 +118,12 @@ async function main() {
   const { db } = await load();
   guardPublished(db);
 
+  // The scheduled workflow owns rates.json, so carry it across the rebuild.
+  const rates = fs.existsSync(RATES) ? fs.readFileSync(RATES) : null;
+
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
+  if (rates) fs.writeFileSync(RATES, rates);
 
   const config = `// --- repo config ---\nconst REPO = ${JSON.stringify(repoConfig())};\n`;
   const bundle = ['lib/schema.js', 'lib/sheet.js', 'lib/rows.js', 'lib/compute.js', 'static/api.js']

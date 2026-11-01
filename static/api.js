@@ -19,6 +19,7 @@ const PASSWORD = '9987';
 const realFetch = window.fetch.bind(window);
 
 let db = null;
+let rates = null;
 let authed = sessionStorage.getItem(AUTH_KEY) === '1';
 
 class ApiError extends Error {
@@ -28,7 +29,20 @@ class ApiError extends Error {
   }
 }
 
+/** Rates published by the scheduled workflow, if the fetch has ever run. */
+async function loadRates() {
+  if (rates !== null) return rates;
+  try {
+    const res = await realFetch(new URL('rates.json', document.baseURI).href, { cache: 'no-store' });
+    rates = res.ok ? await res.json() : false;
+  } catch {
+    rates = false;
+  }
+  return rates;
+}
+
 async function loadDb() {
+  await loadRates();
   if (db) return db;
 
   const saved = localStorage.getItem(STORE_KEY);
@@ -71,7 +85,7 @@ function workbook() {
 
 /** The full application payload: schema, rows, totals and everything derived. */
 function payload() {
-  const { balance, derived } = compute(db);
+  const { balance, derived } = compute(db, rates || null);
   const data = {};
   for (const name of Object.keys(tables)) {
     data[name] = { rows: db[name] || [], totals: tableTotals(name, db[name] || []) };
@@ -209,9 +223,10 @@ function setStatus(text, bad = false) {
   node.classList.toggle('error', bad);
 }
 
+/** Only an entry point: once connected, the status line carries the state. */
 function renderSyncButton() {
   const node = $id('github');
-  if (node) node.textContent = token ? 'Disconnect' : 'Connect GitHub';
+  if (node) node.hidden = Boolean(token);
 }
 
 async function gh(path, init = {}) {
@@ -224,7 +239,11 @@ async function gh(path, init = {}) {
     },
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.message || `GitHub returned ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(body.message || `GitHub returned ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
   return body;
 }
 
@@ -276,7 +295,13 @@ async function push() {
     setStatus(`Saved ${new Date().toLocaleTimeString()}`);
   } catch (e) {
     dirty = true;
-    setStatus(`Save failed — ${e.message}`, true);
+    if (e.status === 401) {
+      // An expired or revoked token will not start working on a retry.
+      forgetToken();
+      setStatus('Token rejected — connect again', true);
+    } else {
+      setStatus(`Save failed — ${e.message}`, true);
+    }
   } finally {
     saving = false;
     if (dirty) scheduleSave();
@@ -316,19 +341,17 @@ async function connect() {
   }
 }
 
-function disconnect() {
-  if (!confirm('Forget the GitHub token stored in this browser?')) return;
+function forgetToken() {
   token = '';
   fileSha = null;
   clearTimeout(saveTimer);
   localStorage.removeItem(TOKEN_KEY);
-  setStatus('Not connected');
   renderSyncButton();
 }
 
 // --- Header actions ---------------------------------------------------------
 
-$id('github').addEventListener('click', () => (token ? disconnect() : connect()));
+$id('github').addEventListener('click', connect);
 
 $id('download').addEventListener('click', async () => {
   await loadDb();
@@ -339,11 +362,6 @@ $id('download').addEventListener('click', async () => {
   URL.revokeObjectURL(url);
 });
 
-$id('reset').addEventListener('click', () => {
-  if (!confirm('Discard your changes and reload the figures committed in the repo?')) return;
-  localStorage.removeItem(STORE_KEY);
-  location.reload();
-});
 
 renderSyncButton();
 setStatus(token ? 'Connected' : 'Not connected');

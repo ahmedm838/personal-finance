@@ -8,7 +8,8 @@
     "start": "node server.js",
     "import": "node scripts/import.js",
     "build:pages": "node scripts/build-pages.js",
-    "pull:pages": "node scripts/pull-pages.js"
+    "pull:pages": "node scripts/pull-pages.js",
+    "fetch:rates": "node scripts/fetch-rates.js"
   },
   "engines": {
     "node": ">=20"

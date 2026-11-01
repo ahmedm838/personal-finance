@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
@@ -8,6 +9,17 @@ const session = require('express-session');
 const { tables, tabs } = require('./lib/schema');
 const { load, save, DATA_FILE } = require('./lib/workbook');
 const { compute, tableTotals } = require('./lib/compute');
+
+const RATES_FILE = path.join(__dirname, 'docs', 'rates.json');
+
+/** Rates published by the scheduled fetch; null lets Settings take over. */
+function liveRates() {
+  try {
+    return JSON.parse(fs.readFileSync(RATES_FILE, 'utf8'));
+  } catch {
+    return null;
+  }
+}
 const { sanitise } = require('./lib/rows');
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -93,7 +105,7 @@ function requireAuth(req, res, next) {
 /** The full application payload: schema, rows, totals and everything derived. */
 async function payload() {
   const { db } = await load();
-  const { balance, derived } = compute(db);
+  const { balance, derived } = compute(db, liveRates());
 
   const data = {};
   for (const name of Object.keys(tables)) {
