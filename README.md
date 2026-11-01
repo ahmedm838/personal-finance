@@ -182,7 +182,7 @@ then force the rebuild to publish your local change.
 | Fuel cost | Monthly km ÷ 100 × L/100km × EGP/L |
 | Monthly km | `DrivingMonthly` km per year ÷ 12 |
 | Driving km per year | Times per year × km each time |
-| Deposit monthly interest total | EGP interest + USD interest × USD rate |
+| Deposit returns by day | Monthly interest grouped by the day each deposit started, EGP and USD kept apart |
 | Expense share % | Amount ÷ expenses total |
 | Furniture amount | Count × price |
 | Cash flow earnings / saving | Interest + salary + other income; − expenses |

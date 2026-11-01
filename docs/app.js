@@ -373,18 +373,43 @@ function renderBalance() {
 /** Headline figures for the deposits tab: when interest lands, and how much. */
 function renderDepositsSummary() {
   const s = state.derived.deposits;
-  return el('div', {}, [
-    el('div', { className: 'cards' }, [
-      card('Monthly interest', fmt.money(s.monthlyInterest)),
-      card('Return days', String(s.days.length)),
-      card('Deposits', String(s.count)),
-      card('Banks', String(s.banks)),
-    ]),
+  // td has no padding of its own: grid cells get it from the input inside,
+  // and read-only ones from .ro. The totals row is padded by tfoot td.
+  const cell = (text, num = true) => el('td', { className: num ? 'num' : '' }, el('span', { className: 'ro', textContent: text }));
+  const foot = (text, num = true) => el('td', { className: num ? 'num' : '', textContent: text });
+
+  const head = el('thead', {}, el('tr', {}, [
+    el('th', { textContent: 'Day' }),
+    el('th', { className: 'num', textContent: 'EGP' }),
+    el('th', { className: 'num', textContent: 'USD' }),
+    el('th', { className: 'num', textContent: 'Deposits' }),
+    el('th', { className: 'num', textContent: 'Banks' }),
+  ]));
+
+  const body = el('tbody', {}, s.schedule.map((r) => el('tr', {}, [
+    cell(fmt.int(r.day), false),
+    cell(r.egp ? fmt.money(r.egp) : ''),
+    cell(r.usd ? fmt.money(r.usd) : ''),
+    cell(fmt.int(r.count)),
+    cell(fmt.int(r.banks)),
+  ])));
+
+  const totals = el('tfoot', {}, el('tr', {}, [
+    foot('Total', false),
+    foot(fmt.money(s.egp)),
+    foot(fmt.money(s.usd)),
+    foot(fmt.int(s.count)),
+    foot(fmt.int(s.banks)),
+  ]));
+
+  return el('section', { className: 'panel' }, [
+    el('div', { className: 'panel-head' }, el('h2', { textContent: 'Monthly returns' })),
+    el('div', { className: 'grid-wrap' }, el('table', {}, [head, body, totals])),
     el('p', {
       className: 'hint',
-      textContent: s.days.length
-        ? `Interest lands on day ${s.days.join(', ')} of the month. USD interest is converted at the published rate.`
-        : 'No deposit start dates, so no return days to show.',
+      textContent: s.undated
+        ? `Interest is shown in each deposit's own currency. ${s.undated} deposit(s) have no start date, so they have no day to land on.`
+        : "Interest is shown in each deposit's own currency, on the day of the month it lands.",
     }),
   ]);
 }
