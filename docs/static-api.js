@@ -163,7 +163,7 @@ const tables = {
     label: 'Cash Flow Projection',
     columns: [
       { key: 'year', label: 'Year', type: 'text', width: 100 },
-      { key: 'deposits', label: 'Deposits', type: 'money', whole: true, width: 130 },
+      { key: 'deposits', label: 'Deposits', type: 'money', whole: true, derived: true, width: 130 },
       { key: 'rate', label: 'Rate', type: 'percent', width: 90 },
       { key: 'interest', label: 'Interest', type: 'money', whole: true, computed: true, width: 120 },
       { key: 'salary', label: 'Salary', type: 'money', whole: true, width: 120 },
@@ -176,7 +176,7 @@ const tables = {
       { key: 'yearly_saving', label: 'Yearly Saving', type: 'money', whole: true, computed: true, width: 140 },
       { key: 'added_deposits', label: 'Added Deposits', type: 'money', whole: true, width: 150 },
       { key: 'to_be_invested', label: 'To Be Invested', type: 'money', whole: true, width: 150 },
-      { key: 'dividends_spending', label: 'Dividends Spending', type: 'money', whole: true, width: 180 },
+      { key: 'dividends_spending', label: 'Dividends', type: 'money', whole: true, width: 130 },
       { key: 'spending', label: 'Spending', type: 'money', whole: true, computed: true, width: 120 },
     ],
   },
@@ -543,21 +543,30 @@ function compute(db, rates) {
     r.multiplier = a ? (num(r.y2026) - a) / a : null;
   }
 
-  // The first year carries the expenses figure that is typed in; each year
-  // after it grows from the one before by that year's inflation rate.
-  let previousExpenses = null;
+  // Only the first year is typed in. Deposits roll forward by what was added
+  // the year before, and expenses grow by that year's inflation rate.
+  let previous = null;
   for (const r of db.CashFlow || []) {
-    r.interest = (num(r.deposits) * num(r.rate)) / 12;
-    if (previousExpenses !== null) {
-      r.expenses = Math.round((previousExpenses * (1 + num(r.inf_rate))) / 1000) * 1000;
+    if (previous) {
+      r.deposits = num(previous.deposits) + num(previous.added_deposits);
+      r.expenses = Math.round((num(previous.expenses) * (1 + num(r.inf_rate))) / 1000) * 1000;
     }
-    previousExpenses = num(r.expenses);
 
+    r.interest = (num(r.deposits) * num(r.rate)) / 12;
     r.earnings = num(r.interest) + num(r.salary) + num(r.other_income);
     r.saving = r.earnings - num(r.expenses);
     r.yearly_saving = r.saving * 12;
     r.spending = r.yearly_saving - num(r.added_deposits) - num(r.to_be_invested);
+    previous = r;
   }
+
+  // What comes in each month: this year's salary from the projection, plus
+  // the interest the deposits actually pay.
+  const thisYear = String(new Date().getFullYear());
+  const yearRow = (db.CashFlow || []).find((r) => String(r.year || '').endsWith(thisYear));
+  const monthlySalary = yearRow ? num(yearRow.salary) : 0;
+  const depositInterest = depositSummary.egp + depositSummary.usd * usdRate;
+  const monthlyEarnings = monthlySalary + depositInterest;
 
   // The outlook picks up where the projection leaves off.
   const lastYear = (db.CashFlow || [])[(db.CashFlow || []).length - 1];
@@ -620,6 +629,9 @@ function compute(db, rates) {
       furnitureTotal,
       debtsTotal,
       usdDepositsEgp: usdDeposits * usdRate,
+      monthlySalary,
+      depositInterest,
+      monthlyEarnings,
       kmPerYear,
       kmPerMonth,
       fuelCost,

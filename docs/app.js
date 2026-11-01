@@ -151,7 +151,7 @@ function isDerivedHere(tableName, col, row, index) {
   if (tableName === 'Entries' && col.key === 'fx_amount') return Boolean(row.link);
   if (tableName === 'Expenses' && col.key === 'amount') return Boolean(row.link);
   // The first year is the base the rest of the projection grows from.
-  if (tableName === 'CashFlow' && col.key === 'expenses') return index > 0;
+  if (tableName === 'CashFlow' && (col.key === 'expenses' || col.key === 'deposits')) return index > 0;
   if (tableName === 'Horizon' && col.key === 'value') return row.item === 'Deposits' || row.item === 'Invested';
   return false;
 }
@@ -477,7 +477,7 @@ function renderBalance() {
     card('Average per year', wholePercent(s.averagePerYear)),
     card('USD Ex. Rate', rate(d.usdRate)),
     card('EUR Ex. Rate', rate(d.eurRate)),
-    card('Monthly KM', whole(d.kmPerMonth)),
+    card('Earnings', whole(d.monthlyEarnings)),
     card('Expenses', whole(d.expensesTotal)),
     card('Deposits (EGP)', whole(d.egpDeposits)),
     card('Deposits (USD)', whole(d.usdDeposits)),
