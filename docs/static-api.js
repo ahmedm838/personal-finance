@@ -690,7 +690,8 @@ function persist() {
   } catch {
     // A full or disabled store only costs us persistence, not the session.
   }
-  scheduleSave();
+  unsaved += 1;
+  setStatus(`${unsaved} unsaved`);
 }
 
 function workbook() {
@@ -708,7 +709,7 @@ function payload() {
   for (const name of Object.keys(tables)) {
     data[name] = { rows: db[name] || [], totals: tableTotals(name, db[name] || []) };
   }
-  return { tabs, schema: tables, data, balance, derived };
+  return { tabs, schema: tables, data, balance, derived, save: 'manual', unsaved };
 }
 
 function requireAuth() {
@@ -742,6 +743,13 @@ const routes = [
     authed = false;
     sessionStorage.removeItem(AUTH_KEY);
     return { ok: true };
+  }],
+
+  ['POST', /^\/api\/save$/, async () => {
+    requireAuth();
+    await loadDb();
+    await push();
+    return payload();
   }],
 
   ['GET', /^\/api\/data$/, async () => {
@@ -824,13 +832,13 @@ window.fetch = async (input, init = {}) => {
  */
 
 const TOKEN_KEY = 'personal-finance:token';
-const SAVE_DELAY = 4000;
+// Edits are kept here until the Save button sends them; the count is what
+// the buttons in each section are enabled by.
+let unsaved = 0;
 
 let token = localStorage.getItem(TOKEN_KEY) || '';
 let fileSha = null;
-let saveTimer = null;
 let saving = false;
-let dirty = false;
 
 const $id = (id) => document.getElementById(id);
 
@@ -882,9 +890,9 @@ async function currentSha() {
 }
 
 async function push() {
-  if (!token || saving) return;
+  if (!token) throw new ApiError(400, 'Connect GitHub first — the button is in the header.');
+  if (saving) return;
   saving = true;
-  dirty = false;
   setStatus('Saving…');
 
   try {
@@ -913,9 +921,9 @@ async function push() {
     fileSha = res.content.sha;
     // What we just pushed is now the published file.
     localStorage.setItem(BASELINE_KEY, await digest(bytes));
+    unsaved = 0;
     setStatus(`Saved ${new Date().toLocaleTimeString()}`);
   } catch (e) {
-    dirty = true;
     if (e.status === 401) {
       // An expired or revoked token will not start working on a retry.
       forgetToken();
@@ -923,20 +931,12 @@ async function push() {
     } else {
       setStatus(`Save failed — ${e.message}`, true);
     }
+    throw e;
   } finally {
     saving = false;
-    if (dirty) scheduleSave();
   }
 }
 
-/** Batch an editing burst into one commit instead of one per keystroke. */
-function scheduleSave() {
-  if (!token) return;
-  dirty = true;
-  setStatus('Saving shortly…');
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(push, SAVE_DELAY);
-}
 
 async function connect() {
   const entered = prompt(
@@ -952,9 +952,8 @@ async function connect() {
   try {
     await currentSha();
     localStorage.setItem(TOKEN_KEY, token);
-    setStatus('Connected');
+    setStatus(unsaved ? `${unsaved} unsaved` : 'Connected');
     renderSyncButton();
-    if (dirty) scheduleSave();
   } catch (e) {
     token = previous;
     fileSha = null;
@@ -965,7 +964,6 @@ async function connect() {
 function forgetToken() {
   token = '';
   fileSha = null;
-  clearTimeout(saveTimer);
   localStorage.removeItem(TOKEN_KEY);
   renderSyncButton();
 }
@@ -986,5 +984,13 @@ $id('download').addEventListener('click', async () => {
 
 renderSyncButton();
 setStatus(token ? 'Connected' : 'Not connected');
+
+// Edits live in this browser until they are saved, so leaving with some
+// still pending is worth a word.
+window.addEventListener('beforeunload', (e) => {
+  if (!unsaved) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
 
 })();

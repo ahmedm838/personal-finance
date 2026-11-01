@@ -280,9 +280,29 @@ function renderKeyed(name) {
   return wrap;
 }
 
+/**
+ * On the published site nothing is written back until this is pressed. The
+ * database is one workbook, so it saves every pending change, not just this
+ * section's — the count says how many are waiting.
+ */
+function saveButton() {
+  const n = state.unsaved || 0;
+  const b = el('button', {
+    className: n ? 'btn primary' : 'btn',
+    type: 'button',
+    textContent: n ? `Save (${n})` : 'Saved',
+    disabled: !n,
+    title: n ? 'Writes every unsaved change, in every tab, back to the repo.' : 'Nothing waiting to be saved.',
+  });
+  b.addEventListener('click', () => mutate('POST', '/api/save', null, 'Saved to the repo'));
+  return b;
+}
+
 function renderTablePanel(name) {
   const def = state.schema[name];
   const head = el('div', { className: 'panel-head' }, el('h2', { textContent: def.label }));
+
+  if (state.save === 'manual') head.append(saveButton());
 
   if (!def.keyed) {
     const add = el('button', { className: 'btn primary', textContent: '+ Add row', type: 'button' });

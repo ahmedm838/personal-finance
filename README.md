@@ -21,10 +21,18 @@ committed back to this repo once you connect a token — see below. "Download
 
 ### Saving from the live site
 
-Click **Connect GitHub** in the header and paste a token. After that every
-edit is committed to `docs/finance.xlsx` about four seconds after you stop
-typing — one commit per burst of edits, not one per keystroke. The header
-shows `Saving…`, then `Saved 14:32:05`, or the error if it failed.
+Click **Connect GitHub** in the header and paste a token.
+
+Saving is then explicit. Edits are held in the browser and every section
+header carries a **Save** button showing how many are waiting — `Save (3)`.
+Pressing it commits them to `docs/finance.xlsx` as one commit. The header
+shows `3 unsaved`, then `Saving…`, then `Saved 14:32:05`, or the error.
+
+The database is a single workbook, so there is no saving one section apart
+from another: any Save button writes everything outstanding, which is why
+they all show the same count. Closing the tab with edits waiting asks first,
+and they survive a reload regardless — they live in this browser until they
+are saved or the published workbook moves on without them.
 
 Make the token at <https://github.com/settings/personal-access-tokens/new>:
 
@@ -183,6 +191,7 @@ then force the rebuild to publish your local change.
 | Monthly km | `DrivingMonthly` km per year ÷ 12 |
 | Driving km per year | Times per year × km each time |
 | Deposit returns by day | Monthly interest grouped by the day each deposit started, EGP and USD kept apart |
+| Driving KM / Year | Times per year × km each time |
 | Expense share % | Amount ÷ expenses total |
 | Furniture amount | Count × price |
 | Cash flow earnings / saving | Interest + salary + other income; − expenses |
