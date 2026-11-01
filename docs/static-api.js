@@ -129,8 +129,8 @@ const tables = {
       { key: 'rate', label: 'Rate', type: 'percent' },
       { key: 'tenor', label: 'Tenor', type: 'int', width: 70 },
       { key: 'start', label: 'Start', type: 'date' },
-      { key: 'end', label: 'End', type: 'date' },
-      { key: 'status', label: 'Status', type: 'select', options: ['Running', 'Matured', 'Closed'] },
+      { key: 'end', label: 'End', type: 'date', computed: true },
+      { key: 'status', label: 'Status', type: 'text', computed: true },
       { key: 'amount', label: 'Amount', type: 'money' },
       { key: 'monthly', label: 'Monthly', type: 'money', computed: true },
       { key: 'day', label: 'Day', type: 'int', computed: true },
@@ -147,8 +147,8 @@ const tables = {
       { key: 'rate', label: 'Rate', type: 'percent' },
       { key: 'tenor', label: 'Tenor', type: 'int', width: 70 },
       { key: 'start', label: 'Start', type: 'date' },
-      { key: 'end', label: 'End', type: 'date' },
-      { key: 'status', label: 'Status', type: 'select', options: ['Running', 'Matured', 'Closed'] },
+      { key: 'end', label: 'End', type: 'date', computed: true },
+      { key: 'status', label: 'Status', type: 'text', computed: true },
       { key: 'amount', label: 'Amount (USD)', type: 'money' },
       { key: 'monthly', label: 'Monthly (USD)', type: 'money', computed: true },
       { key: 'day', label: 'Day', type: 'int', computed: true },
@@ -228,8 +228,9 @@ const tables = {
       { key: 'to', label: 'To', type: 'text' },
       { key: 'remarks', label: 'Remarks', type: 'text' },
       { key: 'distance_km', label: 'Distance (KM)', type: 'number' },
+      { key: 'round_km', label: 'Round KM', type: 'number', computed: true },
     ],
-    totals: { distance_km: 'sum' },
+    totals: { distance_km: 'sum', round_km: 'sum' },
   },
 
   DrivingMonthly: {
@@ -241,6 +242,8 @@ const tables = {
       { key: 'distance_km', label: 'KM / Year', type: 'number', computed: true },
     ],
     totals: { distance_km: 'sum' },
+    // An extra line under the total, read from the derived figures.
+    footRows: [{ label: 'Monthly average', derived: 'kmPerMonth', key: 'distance_km' }],
   },
 
   Furniture: {
@@ -402,6 +405,19 @@ function settingsMap(rows) {
   return m;
 }
 
+/** Same day of the month, n years on; 29 February falls back to the 28th. */
+function addYears(iso, years) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  const n = Math.round(num(years));
+  if (!m || !n) return null;
+
+  const year = Number(m[1]) + n;
+  const month = Number(m[2]);
+  const lastOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const day = Math.min(Number(m[3]), lastOfMonth);
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 function dayOfMonth(iso) {
   if (!iso) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso));
@@ -423,10 +439,13 @@ function compute(db, rates) {
   const eurRate = live ? live.eur : s.eur_rate || 0;
 
   // --- Deposits -----------------------------------------------------------
+  const today = new Date().toISOString().slice(0, 10);
   for (const name of ['DepositsEGP', 'DepositsUSD']) {
     for (const r of db[name] || []) {
       r.monthly = (num(r.amount) * num(r.rate)) / 12;
       r.day = dayOfMonth(r.start);
+      r.end = addYears(r.start, r.tenor);
+      r.status = r.end ? (r.end >= today ? 'Running' : 'Matured') : '';
     }
   }
   const egpDeposits = sum(db.DepositsEGP, 'amount');
@@ -496,6 +515,8 @@ function compute(db, rates) {
   }
 
   // --- Simple per-row derivations ----------------------------------------
+  for (const r of db.Distances || []) r.round_km = num(r.distance_km) * 2;
+
 
   for (const r of db.Macro || []) {
     const a = num(r.y2014);

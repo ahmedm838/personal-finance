@@ -184,6 +184,9 @@ then force the rebuild to publish your local change.
 | Entry amount, USD deposits | `DepositsUSD` total × USD rate |
 | Entry amount, furniture | `Furniture` total |
 | Deposit monthly interest | Amount × rate ÷ 12 |
+| Deposit end date | Start date + tenor, in years |
+| Deposit status | Running up to and including the end date, then Matured |
+| Round KM | Distance × 2 |
 | Expenses → Yearly Fees | `AnnualFees` total ÷ 12, floored to 100 |
 | Expenses → Bills | `Bills` total, rounded up to 500 |
 | Expenses → Benzene | Fuel cost, rounded up to 100 |
@@ -194,12 +197,19 @@ then force the rebuild to publish your local change.
 | Driving KM / Year | Times per year × km each time |
 | Expense share % | Amount ÷ expenses total |
 | Furniture amount | Count × price |
+| Monthly average driving | KM per year ÷ 12, shown under the total |
 | Cash flow earnings / saving | Interest + salary + other income; − expenses |
 | 2014–2026 change | (2026 − 2014) ÷ 2014 |
 
 The Furniture line on the balance sheet follows the Furniture tab, so adding
 an item there moves your assets. Deposits work the same way. Everything else
 on that tab is a figure you type.
+
+A deposit's end date and status are worked out from its start date and
+tenor, so neither can be typed. That also means there is no way to mark one
+Closed: a deposit broken before its term still reads Running until the end
+date passes. If that comes up, the honest fix is a date the deposit actually
+ended on, not a status field to override it.
 
 The "Linked to" column on the Assets & Liabilities and Expenses tabs is what
 drives the rows that pull from another table. Set it to *none* to type a figure

@@ -243,18 +243,29 @@ function renderGrid(name) {
   });
 
   const parts = [thead, tbody];
-  if (totals) {
+
+  /** One summary line across the columns, labelled in the first cell. */
+  const footRow = (label, valueFor) => {
     const tr = el('tr');
     def.columns.forEach((col, idx) => {
-      const has = Object.prototype.hasOwnProperty.call(totals, col.key);
+      const value = valueFor(col);
       tr.append(el('td', {
         className: numeric(col) ? 'num' : '',
-        textContent: has ? display(col, totals[col.key]) : (idx === 0 ? 'Total' : ''),
+        textContent: value !== undefined ? display(col, value) : (idx === 0 ? label : ''),
       }));
     });
     tr.append(el('td', { className: 'actions-cell' }));
-    parts.push(el('tfoot', {}, tr));
+    return tr;
+  };
+
+  const feet = [];
+  if (totals) {
+    feet.push(footRow('Total', (col) => (Object.prototype.hasOwnProperty.call(totals, col.key) ? totals[col.key] : undefined)));
   }
+  for (const extra of def.footRows || []) {
+    feet.push(footRow(extra.label, (col) => (col.key === extra.key ? state.derived[extra.derived] : undefined)));
+  }
+  if (feet.length) parts.push(el('tfoot', {}, feet));
 
   return el('div', { className: 'grid-wrap' }, el('table', {}, parts));
 }
