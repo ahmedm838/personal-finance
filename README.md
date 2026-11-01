@@ -110,10 +110,17 @@ editors and the totals row all follow from it.
 
 This is built to run on `127.0.0.1`, for one person, on a trusted machine.
 
-The repo is private, and it has to stay that way: `data/finance.xlsx` holds real
-account numbers and balances, and it is encrypted with the same password the
-app uses, so the encryption protects it in transit but not from anyone who has
-both the file and this README.
+**This repo is public, and `data/finance.xlsx` is committed to it.** That file
+holds real account numbers and balances. It is encrypted, but with the same
+password the app uses and that this README names, so treat its contents as
+public. Making the repo private again does not undo this: the public history
+may already have been cloned, forked or cached.
+
+To test without publishing figures, run with a throwaway database:
+
+```bash
+npm run import -- --source "<some other workbook>"
+```
 
 Before putting it on a network:
 
