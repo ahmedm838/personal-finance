@@ -15,9 +15,36 @@ nothing to install. Password `9987`.
 
 Pages serves static files only, so that copy has no server behind it:
 `docs/finance.xlsx` is read into the page with SheetJS and the calculations run
-in JavaScript. Edits are held in that browser's local storage and **do not
-reach the repo** — "Download .xlsx" then commit the file to make a change
-stick, or "Reset" to go back to the committed figures.
+in JavaScript. Edits are held in that browser's local storage, and are
+committed back to this repo once you connect a token — see below. "Download
+.xlsx" takes a copy, "Reset" discards local changes and reloads the committed
+figures.
+
+### Saving from the live site
+
+Click **Connect GitHub** in the header and paste a token. After that every
+edit is committed to `docs/finance.xlsx` about four seconds after you stop
+typing — one commit per burst of edits, not one per keystroke. The header
+shows `Saving…`, then `Saved 14:32:05`, or the error if it failed.
+
+Make the token at <https://github.com/settings/personal-access-tokens/new>:
+
+- **Repository access** → Only select repositories → `personal-finance`
+- **Permissions** → Repository permissions → **Contents: Read and write**
+
+Nothing else. That token can write to this one repository and do nothing
+else with the account.
+
+Worth knowing:
+
+- The token is kept in that browser's local storage and never committed.
+  Every Pages site on `ahmedm838.github.io` shares one origin and therefore
+  one local storage, which is why the token should be scoped to this repo.
+- Pages takes a minute or so to rebuild, so another device will lag a commit
+  behind.
+- Only `docs/finance.xlsx` is written. The local `data/finance.xlsx` is a
+  separate, encrypted file and does not change — run `npm run pull:pages` to
+  bring live edits into it.
 
 ## Running it
 
@@ -85,6 +112,17 @@ the schema and calculation modules for the browser, swaps the Express API for
 `static/api.js`, and writes an unencrypted copy of the workbook. Run it after
 any change to the app or the figures, and commit `docs/`.
 
+It refuses to run if `docs/finance.xlsx` holds figures that
+`data/finance.xlsx` does not — that means the live site was edited since the
+last build, and rebuilding would discard those edits. Either take them:
+
+```bash
+npm run pull:pages
+```
+
+which rebuilds the encrypted local database from the published workbook
+(keeping a backup first), or discard them with `npm run build:pages -- --force`.
+
 Reconciles 19 headline figures — totals, equity, profit, deposits, expenses —
 against the values the original workbook had. All 19 match as imported.
 
@@ -118,14 +156,20 @@ of accounts on the same tab, which files them as non-current.
 ## Layout
 
 ```
-server.js            Express app: auth, REST API, static files
-lib/schema.js        Table definitions, column types, tab layout
-lib/workbook.js      Encrypted read/write, atomic save, backups
-lib/compute.js       Every derived value
-scripts/import.js    One-time import from the original workbook
-scripts/verify.js    Reconciliation against the original figures
-public/              Front end (no build step)
-data/finance.xlsx    The database
+server.js               Express app: auth, REST API, static files
+lib/schema.js           Table definitions, column types, tab layout
+lib/workbook.js         Encrypted read/write, atomic save, backups
+lib/sheet.js            Sheet <-> row conversion, shared with the Pages build
+lib/rows.js             Input coercion and validation, shared likewise
+lib/compute.js          Every derived value
+static/api.js           Browser stand-in for the API, and the GitHub write-back
+scripts/import.js       One-time import from the original workbook
+scripts/verify.js       Reconciliation against the original figures
+scripts/build-pages.js  Builds docs/ for GitHub Pages
+scripts/pull-pages.js   Takes live edits back into the local database
+public/                 Front end (no build step)
+data/finance.xlsx       The local database, encrypted
+docs/                   The published site, committed
 ```
 
 To add a column or a table, edit `lib/schema.js`; the API, the grid, the
@@ -145,6 +189,9 @@ The Pages copy goes further: `docs/finance.xlsx` is **not encrypted at all** —
 the browser has no practical way to decrypt it — and the password prompt there
 is cosmetic, since anyone can fetch that file directly. Treat the live site as
 a public read of your figures.
+
+Writing is a different matter: it needs the GitHub token, which only exists
+in your own browser. A visitor can read everything and change nothing.
 
 To test without publishing figures, run with a throwaway database:
 

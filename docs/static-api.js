@@ -1,6 +1,9 @@
 'use strict';
 
 (() => {
+// --- repo config ---
+const REPO = {"owner":"ahmedm838","repo":"personal-finance","branch":"master","path":"docs/finance.xlsx"};
+
 // --- lib/schema.js ---
 /**
  * The shape of the database workbook, and how it is presented in the UI.
@@ -594,6 +597,7 @@ function persist() {
   } catch {
     // A full or disabled store only costs us persistence, not the session.
   }
+  scheduleSave();
 }
 
 function workbook() {
@@ -713,9 +717,159 @@ window.fetch = async (input, init = {}) => {
   }
 };
 
+// --- Writing back to the repo -----------------------------------------------
+
+/**
+ * Pages cannot write, so saving means committing docs/finance.xlsx through the
+ * GitHub Contents API with a token the owner pastes in. REPO is injected by
+ * scripts/build-pages.js from the git remote.
+ *
+ * The token lives in this browser's localStorage and is never committed. Every
+ * site under the same github.io host shares that storage, so it should be a
+ * fine-grained token scoped to this one repository with Contents: Read and
+ * write — nothing more.
+ */
+
+const TOKEN_KEY = 'personal-finance:token';
+const SAVE_DELAY = 4000;
+
+let token = localStorage.getItem(TOKEN_KEY) || '';
+let fileSha = null;
+let saveTimer = null;
+let saving = false;
+let dirty = false;
+
+const $id = (id) => document.getElementById(id);
+
+function setStatus(text, bad = false) {
+  const node = $id('sync-status');
+  if (!node) return;
+  node.textContent = text;
+  node.classList.toggle('error', bad);
+}
+
+function renderSyncButton() {
+  const node = $id('github');
+  if (node) node.textContent = token ? 'Disconnect' : 'Connect GitHub';
+}
+
+async function gh(path, init = {}) {
+  const res = await realFetch(`https://api.github.com${path}`, {
+    ...init,
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${token}`,
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+    },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.message || `GitHub returned ${res.status}`);
+  return body;
+}
+
+/** btoa needs a binary string, and a big array blows the argument limit. */
+function base64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(s);
+}
+
+async function currentSha() {
+  if (fileSha) return fileSha;
+  const meta = await gh(`/repos/${REPO.owner}/${REPO.repo}/contents/${REPO.path}?ref=${REPO.branch}`);
+  fileSha = meta.sha;
+  return fileSha;
+}
+
+async function push() {
+  if (!token || saving) return;
+  saving = true;
+  dirty = false;
+  setStatus('Saving…');
+
+  try {
+    await loadDb();
+    const content = base64(new Uint8Array(XLSX.write(workbook(), { bookType: 'xlsx', type: 'array' })));
+    const put = async () => gh(`/repos/${REPO.owner}/${REPO.repo}/contents/${REPO.path}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        message: 'Update figures from the web app',
+        content,
+        branch: REPO.branch,
+        sha: await currentSha(),
+      }),
+    });
+
+    let res;
+    try {
+      res = await put();
+    } catch (e) {
+      // A stale sha means the file moved on elsewhere; take the new one and retry.
+      fileSha = null;
+      res = await put();
+    }
+
+    fileSha = res.content.sha;
+    setStatus(`Saved ${new Date().toLocaleTimeString()}`);
+  } catch (e) {
+    dirty = true;
+    setStatus(`Save failed — ${e.message}`, true);
+  } finally {
+    saving = false;
+    if (dirty) scheduleSave();
+  }
+}
+
+/** Batch an editing burst into one commit instead of one per keystroke. */
+function scheduleSave() {
+  if (!token) return;
+  dirty = true;
+  setStatus('Saving shortly…');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(push, SAVE_DELAY);
+}
+
+async function connect() {
+  const entered = prompt(
+    'Paste a GitHub fine-grained token with Contents: Read and write, '
+    + `scoped to ${REPO.owner}/${REPO.repo} only.\n\n`
+    + 'It is kept in this browser and never committed.',
+  );
+  if (!entered) return;
+
+  const previous = token;
+  token = entered.trim();
+  fileSha = null;
+  try {
+    await currentSha();
+    localStorage.setItem(TOKEN_KEY, token);
+    setStatus('Connected');
+    renderSyncButton();
+    if (dirty) scheduleSave();
+  } catch (e) {
+    token = previous;
+    fileSha = null;
+    setStatus(`Token rejected — ${e.message}`, true);
+  }
+}
+
+function disconnect() {
+  if (!confirm('Forget the GitHub token stored in this browser?')) return;
+  token = '';
+  fileSha = null;
+  clearTimeout(saveTimer);
+  localStorage.removeItem(TOKEN_KEY);
+  setStatus('Not connected');
+  renderSyncButton();
+}
+
 // --- Header actions ---------------------------------------------------------
 
-document.getElementById('download').addEventListener('click', async () => {
+$id('github').addEventListener('click', () => (token ? disconnect() : connect()));
+
+$id('download').addEventListener('click', async () => {
   await loadDb();
   const out = XLSX.write(workbook(), { bookType: 'xlsx', type: 'array' });
   const url = URL.createObjectURL(new Blob([out], { type: 'application/vnd.ms-excel' }));
@@ -724,10 +878,13 @@ document.getElementById('download').addEventListener('click', async () => {
   URL.revokeObjectURL(url);
 });
 
-document.getElementById('reset').addEventListener('click', () => {
+$id('reset').addEventListener('click', () => {
   if (!confirm('Discard your changes and reload the figures committed in the repo?')) return;
   localStorage.removeItem(STORE_KEY);
   location.reload();
 });
+
+renderSyncButton();
+setStatus(token ? 'Connected' : 'Not connected');
 
 })();
