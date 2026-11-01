@@ -62,6 +62,7 @@ const tables = {
           { value: 'deposits_egp', label: 'EGP deposits total' },
           { value: 'deposits_usd', label: 'USD deposits total' },
           { value: 'furniture', label: 'Furniture total' },
+          { value: 'debts', label: 'Debts total' },
         ],
       },
       { key: 'remarks', label: 'Remarks', type: 'text' },
@@ -234,14 +235,15 @@ const tables = {
   },
 
   DrivingMonthly: {
-    label: 'Monthly Driving',
+    label: 'Yearly Driving',
     columns: [
       { key: 'item', label: 'Purpose', type: 'text' },
       { key: 'frequency', label: 'Frequency', type: 'number', width: 110, hint: 'Times per year' },
-      { key: 'km', label: 'KM', type: 'number', width: 110, hint: 'Distance covered each time' },
+      { key: 'km', label: 'Distance KM', type: 'number', width: 110, hint: 'One way' },
+      { key: 'round_km', label: 'Round KM', type: 'number', width: 110, computed: true },
       { key: 'distance_km', label: 'KM / Year', type: 'number', computed: true },
     ],
-    totals: { distance_km: 'sum' },
+    totals: { round_km: 'sum', distance_km: 'sum' },
     // An extra line under the total, read from the derived figures.
     footRows: [{ label: 'Monthly average', derived: 'kmPerMonth', key: 'distance_km' }],
   },
@@ -478,23 +480,28 @@ function compute(db, rates) {
     undated: depositRows.filter((r) => !Number.isFinite(r.day)).length,
   };
 
-  // --- Furniture ----------------------------------------------------------
-  // Totalled before the ledger, because a ledger entry can now link to it.
+  // --- Furniture and debts -------------------------------------------------
+  // Totalled before the ledger, because a ledger entry can link to them.
   for (const r of db.Furniture || []) r.amount = num(r.count) * num(r.price);
   const furnitureTotal = sum(db.Furniture, 'amount');
+  const debtsTotal = sum(db.Debts, 'amount');
 
   // --- Ledger entries -----------------------------------------------------
   for (const r of db.Entries || []) {
     if (r.link === 'deposits_egp') r.amount = egpDeposits;
     else if (r.link === 'deposits_usd') r.amount = usdDeposits * usdRate;
     else if (r.link === 'furniture') r.amount = furnitureTotal;
+    else if (r.link === 'debts') r.amount = debtsTotal;
     else if (r.currency === 'USD') r.amount = num(r.fx_amount) * usdRate;
     else if (r.currency === 'EUR') r.amount = num(r.fx_amount) * eurRate;
     // EGP rows keep their typed amount.
   }
 
   // --- Driving / fuel -----------------------------------------------------
-  for (const r of db.DrivingMonthly || []) r.distance_km = num(r.km) * num(r.frequency);
+  for (const r of db.DrivingMonthly || []) {
+    r.round_km = num(r.km) * 2;
+    r.distance_km = r.round_km * num(r.frequency);
+  }
   const kmPerYear = sum(db.DrivingMonthly, 'distance_km');
   const kmPerMonth = kmPerYear / 12;
 
@@ -577,6 +584,7 @@ function compute(db, rates) {
       egpDeposits,
       usdDeposits,
       furnitureTotal,
+      debtsTotal,
       usdDepositsEgp: usdDeposits * usdRate,
       kmPerYear,
       kmPerMonth,

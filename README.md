@@ -183,6 +183,7 @@ then force the rebuild to publish your local change.
 | Entry amount, EGP deposits | `DepositsEGP` total |
 | Entry amount, USD deposits | `DepositsUSD` total × USD rate |
 | Entry amount, furniture | `Furniture` total |
+| Entry amount, debts | `Debts` total |
 | Deposit monthly interest | Amount × rate ÷ 12 |
 | Deposit end date | Start date + tenor, in years |
 | Deposit status | Running up to and including the end date, then Matured |
@@ -192,18 +193,22 @@ then force the rebuild to publish your local change.
 | Expenses → Benzene | Fuel cost, rounded up to 100 |
 | Fuel cost | Monthly km ÷ 100 × L/100km × EGP/L |
 | Monthly km | `DrivingMonthly` km per year ÷ 12 |
-| Driving km per year | Times per year × km each time |
+| Round KM, driving | Distance × 2 |
+| Driving km per year | Times per year × round KM |
 | Deposit returns by day | Monthly interest grouped by the day each deposit started, EGP and USD kept apart |
 | Driving KM / Year | Times per year × km each time |
 | Expense share % | Amount ÷ expenses total |
 | Furniture amount | Count × price |
-| Monthly average driving | KM per year ÷ 12, shown under the total |
+| Monthly average driving | KM per year ÷ 12, shown under the yearly total |
 | Cash flow earnings / saving | Interest + salary + other income; − expenses |
 | 2014–2026 change | (2026 − 2014) ÷ 2014 |
 
-The Furniture line on the balance sheet follows the Furniture tab, so adding
-an item there moves your assets. Deposits work the same way. Everything else
-on that tab is a figure you type.
+The Furniture and Debts lines on the balance sheet follow their own tabs, so
+adding a row there moves your assets or liabilities. Deposits work the same
+way. Everything else on that tab is a figure you type.
+
+Driving distances are one way. The yearly figure counts the round trip, so a
+purpose covering 62 km at 240 times a year is 29,760 km, not 14,880.
 
 A deposit's end date and status are worked out from its start date and
 tenor, so neither can be typed. That also means there is no way to mark one
