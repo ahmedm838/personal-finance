@@ -215,10 +215,12 @@ function renderGrid(name) {
           title: 'Calculated',
         }));
       } else {
-        td.append(cellEditor(col, row[col.key], (v) => {
+        const editor = cellEditor(col, row[col.key], (v) => {
           if (v === row[col.key]) return;
           mutate('PATCH', `/api/${name}/rows/${i}`, { [col.key]: v });
-        }));
+        });
+        editor.dataset.cell = `${name}:${i}:${col.key}`;
+        td.append(editor);
       }
       tr.append(td);
     }
@@ -265,9 +267,10 @@ function renderKeyed(name) {
   const wrap = el('div', { className: 'fields' });
   rows.forEach((row, i) => {
     const input = el('input', { type: 'text', value: row[valueCol.key] ?? '' });
+    input.dataset.cell = `${name}:${i}:${valueCol.key}`;
     const commit = () => {
       if (input.value === (row[valueCol.key] ?? '')) return;
-      mutate('PATCH', `/api/${name}/rows/${i}`, { [valueCol.key]: input.value }, 'Saved');
+      mutate('PATCH', `/api/${name}/rows/${i}`, { [valueCol.key]: input.value });
     };
     input.addEventListener('blur', commit);
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
@@ -302,17 +305,25 @@ function renderTablePanel(name) {
   const def = state.schema[name];
   const head = el('div', { className: 'panel-head' }, el('h2', { textContent: def.label }));
 
-  if (state.save === 'manual') head.append(saveButton());
-
   if (!def.keyed) {
     const add = el('button', { className: 'btn primary', textContent: '+ Add row', type: 'button' });
-    add.addEventListener('click', () => mutate('POST', `/api/${name}/rows`, {}, 'Row added'));
+    add.addEventListener('click', async () => {
+      await mutate('POST', `/api/${name}/rows`, {}, 'Row added');
+      const last = state.data[name].rows.length - 1;
+      const first = def.columns.find((c) => !c.computed && !c.readOnly);
+      const cell = document.querySelector(`[data-cell="${name}:${last}:${first.key}"]`);
+      if (cell) {
+        cell.scrollIntoView({ block: 'nearest' });
+        cell.focus();
+      }
+    });
     head.append(add);
   }
 
   return el('section', { className: 'panel' }, [
     head,
     el('div', { className: def.keyed ? 'panel-body' : '' }, def.keyed ? renderKeyed(name) : renderGrid(name)),
+    ...(state.save === 'manual' ? [el('div', { className: 'panel-foot' }, saveButton())] : []),
   ]);
 }
 
@@ -436,7 +447,12 @@ function renderDepositsSummary() {
 
 // --- Shell ------------------------------------------------------------------
 
-function render() {
+function render({ toTop = false } = {}) {
+  const scroll = window.scrollY;
+  const active = document.activeElement;
+  const cell = active && active.dataset ? active.dataset.cell : null;
+  const caret = active && typeof active.selectionStart === 'number' ? active.selectionStart : null;
+
   $('#as-of').textContent = `as of ${state.balance.asOf}`;
 
   const tabsBar = $('#tabs');
@@ -444,7 +460,7 @@ function render() {
   for (const tab of state.tabs) {
     const b = el('button', { type: 'button', textContent: tab.label, role: 'tab' });
     b.setAttribute('aria-selected', String(tab.id === activeTab));
-    b.addEventListener('click', () => { activeTab = tab.id; render(); });
+    b.addEventListener('click', () => { activeTab = tab.id; render({ toTop: true }); });
     tabsBar.append(b);
   }
 
@@ -458,7 +474,23 @@ function render() {
     if (tab.summary === 'deposits') content.append(renderDepositsSummary());
     for (const name of tab.tables) content.append(renderTablePanel(name));
   }
-  window.scrollTo({ top: 0 });
+  if (toTop) {
+    window.scrollTo({ top: 0 });
+    return;
+  }
+
+  const again = cell ? document.querySelector(`[data-cell="${cell}"]`) : null;
+  if (again) {
+    // preventScroll matters: focusing an off-screen cell would scroll to it
+    // and undo the position we are restoring on the next line.
+    again.focus({ preventScroll: true });
+    if (caret !== null && typeof again.setSelectionRange === 'function') {
+      // Not every input type allows a selection range; losing the caret is
+      // better than throwing here.
+      try { again.setSelectionRange(caret, caret); } catch { /* ignore */ }
+    }
+  }
+  window.scrollTo({ top: scroll });
 }
 
 function showLogin() {
@@ -473,7 +505,7 @@ async function start() {
   activeTab = activeTab || state.tabs[0].id;
   $('#login').hidden = true;
   $('#app').hidden = false;
-  render();
+  render({ toTop: true });
 }
 
 $('#login-form').addEventListener('submit', async (e) => {

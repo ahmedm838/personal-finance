@@ -23,8 +23,8 @@ committed back to this repo once you connect a token — see below. "Download
 
 Click **Connect GitHub** in the header and paste a token.
 
-Saving is then explicit. Edits are held in the browser and every section
-header carries a **Save** button showing how many are waiting — `Save (3)`.
+Saving is then explicit. Edits are held in the browser and every section ends
+with a **Save** button showing how many are waiting — `Save (3)`.
 Pressing it commits them to `docs/finance.xlsx` as one commit. The header
 shows `3 unsaved`, then `Saving…`, then `Saved 14:32:05`, or the error.
 
