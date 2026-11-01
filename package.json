@@ -12,9 +12,9 @@
     "node": ">=20"
   },
   "dependencies": {
-    "express": "^5.1.0",
-    "express-session": "^1.18.1",
-    "officecrypto-tool": "^0.0.24",
+    "express": "^5.3.0",
+    "express-session": "^1.19.0",
+    "officecrypto-tool": "^0.0.19",
     "xlsx": "^0.18.5"
   }
 }
