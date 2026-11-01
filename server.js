@@ -8,6 +8,7 @@ const session = require('express-session');
 const { tables, tabs } = require('./lib/schema');
 const { load, save, DATA_FILE } = require('./lib/workbook');
 const { compute, tableTotals } = require('./lib/compute');
+const { sanitise } = require('./lib/rows');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
@@ -88,48 +89,6 @@ function requireAuth(req, res, next) {
 }
 
 // --- Data -------------------------------------------------------------------
-
-/** Coerce an incoming value to the column's storage type. */
-function coerce(col, value) {
-  if (value === null || value === undefined || value === '') {
-    return col.type === 'text' || col.type === 'select' ? '' : null;
-  }
-  switch (col.type) {
-    case 'number':
-    case 'money':
-    case 'percent': {
-      const n = Number(value);
-      if (!Number.isFinite(n)) throw new Error(`"${col.label}" must be a number`);
-      return n;
-    }
-    case 'int': {
-      const n = Number(value);
-      if (!Number.isFinite(n)) throw new Error(`"${col.label}" must be a number`);
-      return Math.round(n);
-    }
-    case 'date': {
-      const s = String(value).slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new Error(`"${col.label}" must be a date`);
-      return s;
-    }
-    default:
-      return String(value);
-  }
-}
-
-function sanitise(def, input, base = {}) {
-  const row = { ...base };
-  for (const col of def.columns) {
-    if (col.computed || col.readOnly) continue;
-    if (!(col.key in input)) continue;
-    row[col.key] = coerce(col, input[col.key]);
-  }
-  for (const col of def.columns) {
-    if (col.computed) continue;
-    if (!(col.key in row)) row[col.key] = col.type === 'text' || col.type === 'select' ? '' : null;
-  }
-  return row;
-}
 
 /** The full application payload: schema, rows, totals and everything derived. */
 async function payload() {

@@ -8,6 +8,17 @@ Single values are editable input fields, everything tabular is a grid you can
 insert, edit and delete rows in. Calculated figures are shown greyed out and
 recalculate as soon as something they depend on changes.
 
+## Live version
+
+<https://ahmedm838.github.io/personal-finance/> — the whole app in the browser,
+nothing to install. Password `9987`.
+
+Pages serves static files only, so that copy has no server behind it:
+`docs/finance.xlsx` is read into the page with SheetJS and the calculations run
+in JavaScript. Edits are held in that browser's local storage and **do not
+reach the repo** — "Download .xlsx" then commit the file to make a change
+stick, or "Reset" to go back to the committed figures.
+
 ## Running it
 
 ```bash
@@ -59,6 +70,20 @@ unencrypted.
 ```bash
 node scripts/verify.js
 ```
+
+Reconciles 19 headline figures — totals, equity, profit, deposits, expenses —
+against the values the original workbook had. All 19 match as imported.
+
+### Rebuilding the Pages copy
+
+```bash
+npm run build:pages
+```
+
+Regenerates `docs/` from `public/`, `lib/` and the current database: it inlines
+the schema and calculation modules for the browser, swaps the Express API for
+`static/api.js`, and writes an unencrypted copy of the workbook. Run it after
+any change to the app or the figures, and commit `docs/`.
 
 Reconciles 19 headline figures — totals, equity, profit, deposits, expenses —
 against the values the original workbook had. All 19 match as imported.
@@ -115,6 +140,11 @@ holds real account numbers and balances. It is encrypted, but with the same
 password the app uses and that this README names, so treat its contents as
 public. Making the repo private again does not undo this: the public history
 may already have been cloned, forked or cached.
+
+The Pages copy goes further: `docs/finance.xlsx` is **not encrypted at all** —
+the browser has no practical way to decrypt it — and the password prompt there
+is cosmetic, since anyone can fetch that file directly. Treat the live site as
+a public read of your figures.
 
 To test without publishing figures, run with a throwaway database:
 
