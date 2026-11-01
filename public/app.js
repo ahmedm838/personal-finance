@@ -1,0 +1,376 @@
+'use strict';
+
+let state = null;
+let activeTab = null;
+
+const $ = (sel) => document.querySelector(sel);
+const el = (tag, props = {}, kids = []) => {
+  const n = Object.assign(document.createElement(tag), props);
+  for (const k of [].concat(kids)) n.append(k);
+  return n;
+};
+
+// --- Formatting -------------------------------------------------------------
+
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+
+const fmt = {
+  money: (v) => (isNum(v) ? v.toLocaleString('en-US', { maximumFractionDigits: 2 }) : ''),
+  number: (v) => (isNum(v) ? v.toLocaleString('en-US', { maximumFractionDigits: 3 }) : ''),
+  int: (v) => (isNum(v) ? String(Math.round(v)) : ''),
+  percent: (v) => (isNum(v) ? `${(v * 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}%` : ''),
+  date: (v) => v || '',
+  text: (v) => (v === null || v === undefined ? '' : String(v)),
+};
+
+const display = (col, v) => (fmt[col.type] || fmt.text)(v);
+const numeric = (col) => ['money', 'number', 'int', 'percent'].includes(col.type);
+
+function toast(message, bad = false) {
+  const t = $('#toast');
+  t.textContent = message;
+  t.className = `toast${bad ? ' bad' : ''}`;
+  t.hidden = false;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { t.hidden = true; }, bad ? 5000 : 2200);
+}
+
+// --- API --------------------------------------------------------------------
+
+async function api(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) { showLogin(); throw new Error('Signed out'); }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || `Request failed (${res.status})`);
+  return json;
+}
+
+/** Every mutation returns the whole payload, so totals stay in step. */
+async function mutate(method, url, body, note) {
+  try {
+    state = await api(method, url, body);
+    render();
+    if (note) toast(note);
+  } catch (e) {
+    if (e.message !== 'Signed out') toast(e.message, true);
+  }
+}
+
+// --- Cell editors -----------------------------------------------------------
+
+/**
+ * Number inputs show a formatted value at rest and the raw number while
+ * focused, so a long figure stays readable without blocking editing.
+ */
+function numberInput(col, value, commit) {
+  const input = el('input', {
+    type: 'text',
+    inputMode: 'decimal',
+    className: 'num',
+    value: display(col, value),
+  });
+
+  input.addEventListener('focus', () => {
+    input.value = isNum(value) ? (col.type === 'percent' ? value * 100 : value) : '';
+    input.select();
+  });
+
+  const apply = () => {
+    const raw = input.value.trim().replace(/[,%\s]/g, '');
+    if (raw === '') return commit(null);
+    const n = Number(raw);
+    if (!Number.isFinite(n)) { toast(`"${input.value}" is not a number`, true); input.value = display(col, value); return undefined; }
+    return commit(col.type === 'percent' ? n / 100 : n);
+  };
+
+  input.addEventListener('blur', apply);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.value = display(col, value); input.blur(); }
+  });
+  return input;
+}
+
+function optionsFor(col) {
+  if (col.options) {
+    return col.options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o));
+  }
+  if (col.optionsFrom) {
+    const [table, key] = col.optionsFrom.split('.');
+    const seen = new Set();
+    for (const r of state.data[table].rows) if (r[key]) seen.add(r[key]);
+    return [...seen].map((v) => ({ value: v, label: v }));
+  }
+  return [];
+}
+
+function cellEditor(col, value, commit) {
+  if (col.type === 'select') {
+    const sel = el('select');
+    const opts = optionsFor(col);
+    if (!opts.some((o) => o.value === (value ?? ''))) opts.unshift({ value: value ?? '', label: value || '—' });
+    for (const o of opts) sel.append(el('option', { value: o.value, textContent: o.label, selected: o.value === (value ?? '') }));
+    sel.addEventListener('change', () => commit(sel.value));
+    return sel;
+  }
+  if (col.type === 'date') {
+    const input = el('input', { type: 'date', value: value || '' });
+    input.addEventListener('change', () => commit(input.value || null));
+    return input;
+  }
+  if (numeric(col)) return numberInput(col, value, commit);
+
+  const input = el('input', { type: 'text', value: value ?? '' });
+  const apply = () => commit(input.value);
+  input.addEventListener('blur', () => { if (input.value !== (value ?? '')) apply(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.value = value ?? ''; input.blur(); }
+  });
+  return input;
+}
+
+/** True when the value is calculated for this particular row. */
+function isDerivedHere(tableName, col, row) {
+  if (col.computed) return true;
+  if (!col.derived) return false;
+  if (tableName === 'Entries' && col.key === 'amount') {
+    return Boolean(row.link) || (row.currency && row.currency !== 'EGP');
+  }
+  if (tableName === 'Expenses' && col.key === 'amount') return Boolean(row.link);
+  return false;
+}
+
+// --- Table rendering --------------------------------------------------------
+
+function renderGrid(name) {
+  const def = state.schema[name];
+  const { rows, totals } = state.data[name];
+
+  const thead = el('thead', {}, el('tr', {}, [
+    ...def.columns.map((c) => el('th', {
+      textContent: c.label,
+      className: numeric(c) ? 'num' : '',
+      title: c.hint || '',
+      style: c.width ? `width:${c.width}px` : '',
+    })),
+    el('th', { className: 'actions-cell' }),
+  ]));
+
+  const tbody = el('tbody');
+  rows.forEach((row, i) => {
+    const tr = el('tr');
+    for (const col of def.columns) {
+      const td = el('td', { className: numeric(col) ? 'num' : '' });
+      if (col.readOnly || isDerivedHere(name, col, row)) {
+        td.append(el('span', {
+          className: 'ro calc',
+          textContent: display(col, row[col.key]),
+          title: 'Calculated',
+        }));
+      } else {
+        td.append(cellEditor(col, row[col.key], (v) => {
+          if (v === row[col.key]) return;
+          mutate('PATCH', `/api/${name}/rows/${i}`, { [col.key]: v });
+        }));
+      }
+      tr.append(td);
+    }
+
+    const del = el('button', { className: 'icon-btn', textContent: '✕', title: 'Delete row', type: 'button' });
+    del.addEventListener('click', () => {
+      const label = row[def.columns[0].key] || `row ${i + 1}`;
+      if (confirm(`Delete "${label}"?`)) mutate('DELETE', `/api/${name}/rows/${i}`, null, 'Row deleted');
+    });
+    tr.append(el('td', { className: 'actions-cell' }, del));
+    tbody.append(tr);
+  });
+
+  const parts = [thead, tbody];
+  if (totals) {
+    const tr = el('tr');
+    def.columns.forEach((col, idx) => {
+      const has = Object.prototype.hasOwnProperty.call(totals, col.key);
+      tr.append(el('td', {
+        className: numeric(col) ? 'num' : '',
+        textContent: has ? display(col, totals[col.key]) : (idx === 0 ? 'Total' : ''),
+      }));
+    });
+    tr.append(el('td', { className: 'actions-cell' }));
+    parts.push(el('tfoot', {}, tr));
+  }
+
+  return el('div', { className: 'grid-wrap' }, el('table', {}, parts));
+}
+
+function renderKeyed(name) {
+  const def = state.schema[name];
+  const { rows } = state.data[name];
+  const valueCol = def.columns.find((c) => !c.readOnly);
+
+  const wrap = el('div', { className: 'fields' });
+  rows.forEach((row, i) => {
+    const input = el('input', { type: 'text', value: row[valueCol.key] ?? '' });
+    const commit = () => {
+      if (input.value === (row[valueCol.key] ?? '')) return;
+      mutate('PATCH', `/api/${name}/rows/${i}`, { [valueCol.key]: input.value }, 'Saved');
+    };
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+
+    wrap.append(el('div', { className: 'field' }, [
+      el('label', { textContent: row.label || row.key }),
+      el('div', { className: 'row' }, [input, el('span', { className: 'unit', textContent: row.unit || '' })]),
+    ]));
+  });
+  return wrap;
+}
+
+function renderTablePanel(name) {
+  const def = state.schema[name];
+  const head = el('div', { className: 'panel-head' }, el('h2', { textContent: def.label }));
+
+  if (!def.keyed) {
+    const add = el('button', { className: 'btn primary', textContent: '+ Add row', type: 'button' });
+    add.addEventListener('click', () => mutate('POST', `/api/${name}/rows`, {}, 'Row added'));
+    head.append(add);
+  }
+
+  return el('section', { className: 'panel' }, [
+    head,
+    el('div', { className: def.keyed ? 'panel-body' : '' }, def.keyed ? renderKeyed(name) : renderGrid(name)),
+  ]);
+}
+
+// --- Balance sheet ----------------------------------------------------------
+
+function sideTable(title, groups, total) {
+  const tbody = el('tbody');
+  for (const g of groups) {
+    tbody.append(el('tr', { className: 'bs-section' }, [
+      el('td', { textContent: g.section }),
+      el('td', { className: 'num', textContent: fmt.money(g.total) }),
+    ]));
+    for (const line of g.lines) {
+      tbody.append(el('tr', { className: 'bs-line' }, [
+        el('td', { textContent: line.label }),
+        el('td', { className: 'num', textContent: fmt.money(line.amount) }),
+      ]));
+    }
+  }
+  tbody.append(el('tr', { className: 'bs-total' }, [
+    el('td', { textContent: 'Total' }),
+    el('td', { className: 'num', textContent: fmt.money(total) }),
+  ]));
+
+  return el('section', { className: 'panel' }, [
+    el('div', { className: 'panel-head' }, el('h2', { textContent: title })),
+    el('div', { className: 'grid-wrap' }, el('table', {}, [
+      el('thead', {}, el('tr', {}, [
+        el('th', { textContent: title }),
+        el('th', { className: 'num', textContent: 'Amount' }),
+      ])),
+      tbody,
+    ])),
+  ]);
+}
+
+function renderBalance() {
+  const b = state.balance;
+  const s = b.summary;
+  const frag = document.createDocumentFragment();
+
+  const card = (k, v, cls = '') => el('div', { className: 'card' }, [
+    el('div', { className: 'k', textContent: k }),
+    el('div', { className: `v ${cls}`, textContent: v }),
+  ]);
+
+  frag.append(el('div', { className: 'cards' }, [
+    card('Capital paid', fmt.money(s.capitalPaid)),
+    card('Equity', fmt.money(s.equity)),
+    card('Profit & loss', fmt.money(s.profit), s.profit >= 0 ? 'pos' : 'neg'),
+    card('Return on capital', fmt.percent(s.overYears), s.overYears >= 0 ? 'pos' : 'neg'),
+    card('Years tracked', s.years.toFixed(2)),
+    card('Average per year', fmt.percent(s.averagePerYear)),
+  ]));
+
+  frag.append(el('p', {
+    className: 'hint',
+    textContent: 'Assets and liabilities are calculated from the Assets & Liabilities tab. Capital is editable below.',
+  }));
+
+  frag.append(el('div', { className: 'columns' }, [
+    sideTable('Assets', b.assets, b.totals.assets),
+    sideTable('Liabilities', b.liabilities, b.totals.liabilities),
+    renderTablePanel('Capital'),
+  ]));
+
+  return frag;
+}
+
+// --- Shell ------------------------------------------------------------------
+
+function render() {
+  $('#as-of').textContent = `as of ${state.balance.asOf}`;
+
+  const tabsBar = $('#tabs');
+  tabsBar.replaceChildren();
+  for (const tab of state.tabs) {
+    const b = el('button', { type: 'button', textContent: tab.label, role: 'tab' });
+    b.setAttribute('aria-selected', String(tab.id === activeTab));
+    b.addEventListener('click', () => { activeTab = tab.id; render(); });
+    tabsBar.append(b);
+  }
+
+  const tab = state.tabs.find((t) => t.id === activeTab) || state.tabs[0];
+  const content = $('#content');
+  content.replaceChildren();
+
+  if (tab.view === 'balance') {
+    content.append(renderBalance());
+  } else {
+    for (const name of tab.tables) content.append(renderTablePanel(name));
+  }
+  window.scrollTo({ top: 0 });
+}
+
+function showLogin() {
+  $('#app').hidden = true;
+  $('#login').hidden = false;
+  $('#password').value = '';
+  $('#password').focus();
+}
+
+async function start() {
+  state = await api('GET', '/api/data');
+  activeTab = activeTab || state.tabs[0].id;
+  $('#login').hidden = true;
+  $('#app').hidden = false;
+  render();
+}
+
+$('#login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('#login-error').textContent = '';
+  try {
+    await api('POST', '/api/login', { password: $('#password').value });
+    await start();
+  } catch (err) {
+    $('#login-error').textContent = err.message;
+  }
+});
+
+$('#logout').addEventListener('click', async () => {
+  await api('POST', '/api/logout').catch(() => {});
+  showLogin();
+});
+
+(async () => {
+  const { authed } = await api('GET', '/api/session').catch(() => ({ authed: false }));
+  if (authed) await start().catch(showLogin);
+  else showLogin();
+})();

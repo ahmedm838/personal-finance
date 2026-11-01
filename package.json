@@ -1,0 +1,20 @@
+{
+  "name": "personal-finance",
+  "version": "1.0.0",
+  "description": "Password-protected personal financial statements web app, backed by an Excel workbook",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "import": "node scripts/import.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "express-session": "^1.18.1",
+    "officecrypto-tool": "^0.0.24",
+    "xlsx": "^0.18.5"
+  }
+}

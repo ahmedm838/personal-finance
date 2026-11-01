@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Financial Statements</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>📊</text></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="login" class="login" hidden>
+  <form class="login-card" id="login-form" autocomplete="off">
+    <h1>Financial Statements</h1>
+    <p class="muted">Enter your password to continue.</p>
+    <input type="password" id="password" inputmode="numeric" placeholder="Password" autocomplete="current-password" required>
+    <button type="submit">Unlock</button>
+    <p class="error" id="login-error" role="alert"></p>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <header class="topbar">
+    <div class="brand">
+      <strong>Financial Statements</strong>
+      <span class="muted" id="as-of"></span>
+    </div>
+    <div class="actions">
+      <a href="/api/download" class="btn ghost">Download .xlsx</a>
+      <button class="btn ghost" id="logout">Sign out</button>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs" role="tablist"></nav>
+  <main id="content"></main>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
