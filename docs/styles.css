@@ -408,3 +408,32 @@ td .ro { white-space: nowrap; }
 }
 
 .filter-row input:focus { outline: none; border-color: var(--accent); }
+
+/* Sortable headings, and the two tables that centre theirs ---------------- */
+
+th .sort {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+th.num .sort { width: 100%; text-align: right; }
+th .sort:hover { color: var(--accent); }
+
+.centred-headings thead th,
+.centred-headings thead th.num { text-align: center; vertical-align: middle; }
+.centred-headings thead th .sort { text-align: center; }
+
+/* A keyed field puts its name beside the box rather than above it. */
+.panel-body .fields { max-width: 560px; }
+
+.panel-body .field {
+  grid-template-columns: 170px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}

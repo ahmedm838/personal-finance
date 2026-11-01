@@ -99,6 +99,7 @@ const tables = {
       { key: 'amount', label: 'Amount', type: 'money', derived: true },
       { key: 'share', label: '%', type: 'percent', computed: true },
     ],
+    sortable: ['amount'],
     totals: { amount: 'sum' },
   },
 
@@ -160,6 +161,7 @@ const tables = {
 
   CashFlow: {
     label: 'Cash Flow Projection',
+    centreHeadings: true,
     columns: [
       { key: 'year', label: 'Year', type: 'text', width: 70 },
       { key: 'deposits', label: 'Deposits', type: 'money', whole: true, derived: true, width: 150 },
@@ -182,6 +184,7 @@ const tables = {
 
   Horizon: {
     label: 'Long-term Outlook',
+    centreHeadings: true,
     columns: [
       { key: 'item', label: 'Item', type: 'text', width: 260 },
       // Deposits and Invested are read off the projection; the rest is typed.
@@ -399,6 +402,9 @@ function sanitise(def, input, base = {}) {
 }
 
 // --- lib/compute.js ---
+// Tracking began here. It is a fact about the past, not something to set.
+const TRACKING_START = '2019-04-01';
+
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0);
 const sum = (rows, key) => rows.reduce((t, r) => t + num(r[key]), 0);
 const floorTo = (v, step) => Math.floor(v / step) * step;
@@ -601,9 +607,7 @@ function compute(db, rates) {
 
   const equity = assetsTotal - liabilitiesTotal;
   const profit = equity - capitalTotal;
-  const startDate = (db.Settings || []).find((r) => r.key === 'start_date');
-  const startMs = startDate && startDate.value ? Date.parse(String(startDate.value)) : NaN;
-  const years = Number.isFinite(startMs) ? (Date.now() - startMs) / (365 * 24 * 3600 * 1000) : 0;
+  const years = (Date.now() - Date.parse(TRACKING_START)) / (365 * 24 * 3600 * 1000);
   const overYears = capitalTotal ? profit / capitalTotal : 0;
 
   return {

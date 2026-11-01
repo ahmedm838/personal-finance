@@ -3,6 +3,7 @@
 let state = null;
 let activeTab = null;
 const filters = {};
+const sorts = {};
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, props = {}, kids = []) => {
@@ -245,13 +246,34 @@ function renderGrid(name) {
   const def = state.schema[name];
   const { rows, totals } = state.data[name];
 
+  const order = sorts[name];
   const thead = el('thead', {}, el('tr', {}, [
-    ...def.columns.map((c) => el('th', {
-      textContent: c.label,
-      className: numeric(c) ? 'num' : '',
-      title: c.hint || '',
-      style: c.width ? `width:${c.width}px` : '',
-    })),
+    ...def.columns.map((c) => {
+      const th = el('th', {
+        className: numeric(c) ? 'num' : '',
+        title: c.hint || '',
+        style: c.width ? `width:${c.width}px` : '',
+      });
+
+      if (!(def.sortable || []).includes(c.key)) {
+        th.textContent = c.label;
+        return th;
+      }
+
+      // Click once for ascending, again for descending, again for the
+      // order the rows are stored in.
+      const dir = order && order.key === c.key ? order.dir : null;
+      const arrow = dir === 'asc' ? ' \u25b2' : dir === 'desc' ? ' \u25bc' : '';
+      const button = el('button', { type: 'button', className: 'sort', textContent: c.label + arrow });
+      button.addEventListener('click', () => {
+        const next = dir === null ? 'asc' : dir === 'asc' ? 'desc' : null;
+        if (next) sorts[name] = { key: c.key, dir: next };
+        else delete sorts[name];
+        render();
+      });
+      th.append(button);
+      return th;
+    }),
     el('th', { className: 'actions-cell' }),
   ]));
 
@@ -264,11 +286,20 @@ function renderGrid(name) {
     return !q || String(display(col, row[col.key])).toLowerCase().includes(q);
   });
 
+  // Rows keep their stored position, because that is what an edit or a
+  // delete addresses; only the order they are drawn in changes.
+  const entries = rows.map((row, i) => ({ row, i })).filter(({ row }) => shown(row));
+  if (order) {
+    const col = def.columns.find((c) => c.key === order.key);
+    const sign = order.dir === 'desc' ? -1 : 1;
+    entries.sort((a, b) => sign * (numeric(col)
+      ? (Number(a.row[order.key]) || 0) - (Number(b.row[order.key]) || 0)
+      : String(a.row[order.key] ?? '').localeCompare(String(b.row[order.key] ?? ''))));
+  }
+  const visibleRows = entries.map((e) => e.row);
+
   const tbody = el('tbody');
-  const visibleRows = [];
-  rows.forEach((row, i) => {
-    if (!shown(row)) return;
-    visibleRows.push(row);
+  entries.forEach(({ row, i }) => {
     const tr = el('tr');
     for (const col of def.columns) {
       const td = el('td', { className: numeric(col) ? 'num' : '' });
@@ -337,7 +368,7 @@ function renderGrid(name) {
   }
   if (feet.length) parts.push(el('tfoot', {}, feet));
 
-  return el('div', { className: 'grid-wrap' }, el('table', {}, parts));
+  return el('div', { className: 'grid-wrap' }, el('table', { className: def.centreHeadings ? 'centred-headings' : '' }, parts));
 }
 
 function renderKeyed(name) {
