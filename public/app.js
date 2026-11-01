@@ -24,6 +24,11 @@ const fmt = {
 };
 
 const display = (col, v) => (fmt[col.type] || fmt.text)(v);
+
+const card = (k, v, cls = '') => el('div', { className: 'card' }, [
+  el('div', { className: 'k', textContent: k }),
+  el('div', { className: `v ${cls}`, textContent: v }),
+]);
 const numeric = (col) => ['money', 'number', 'int', 'percent'].includes(col.type);
 
 function toast(message, bad = false) {
@@ -331,10 +336,6 @@ function renderBalance() {
   const rate = (v) => (isNum(v) ? v.toFixed(4) : '—');
   const frag = document.createDocumentFragment();
 
-  const card = (k, v, cls = '') => el('div', { className: 'card' }, [
-    el('div', { className: 'k', textContent: k }),
-    el('div', { className: `v ${cls}`, textContent: v }),
-  ]);
 
   frag.append(el('div', { className: 'cards' }, [
     card('Capital paid', fmt.money(s.capitalPaid)),
@@ -345,6 +346,7 @@ function renderBalance() {
     card('Average per year', fmt.percent(s.averagePerYear)),
     card('USD Ex. Rate', rate(d.usdRate)),
     card('EUR Ex. Rate', rate(d.eurRate)),
+    card('Monthly KM', fmt.number(d.kmPerMonth)),
   ]));
 
   frag.append(el('p', {
@@ -356,7 +358,7 @@ function renderBalance() {
     className: 'hint',
     textContent: d.rateIsLive
       ? `USD and EUR holdings are valued at these rates, from ${d.rateSource}, fetched ${new Date(d.rateFetched).toLocaleString()}.`
-      : 'No published rates were found, so the rates in Settings are being used.',
+      : 'No published rates found — foreign holdings cannot be valued. Run the rate fetch.',
   }));
 
   frag.append(el('div', { className: 'columns' }, [
@@ -366,6 +368,25 @@ function renderBalance() {
   ]));
 
   return frag;
+}
+
+/** Headline figures for the deposits tab: when interest lands, and how much. */
+function renderDepositsSummary() {
+  const s = state.derived.deposits;
+  return el('div', {}, [
+    el('div', { className: 'cards' }, [
+      card('Monthly interest', fmt.money(s.monthlyInterest)),
+      card('Return days', String(s.days.length)),
+      card('Deposits', String(s.count)),
+      card('Banks', String(s.banks)),
+    ]),
+    el('p', {
+      className: 'hint',
+      textContent: s.days.length
+        ? `Interest lands on day ${s.days.join(', ')} of the month. USD interest is converted at the published rate.`
+        : 'No deposit start dates, so no return days to show.',
+    }),
+  ]);
 }
 
 // --- Shell ------------------------------------------------------------------
@@ -389,6 +410,7 @@ function render() {
   if (tab.view === 'balance') {
     content.append(renderBalance());
   } else {
+    if (tab.summary === 'deposits') content.append(renderDepositsSummary());
     for (const name of tab.tables) content.append(renderTablePanel(name));
   }
   window.scrollTo({ top: 0 });

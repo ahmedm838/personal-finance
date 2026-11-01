@@ -236,8 +236,9 @@ const tables = {
     label: 'Monthly Driving',
     columns: [
       { key: 'item', label: 'Purpose', type: 'text' },
-      { key: 'remarks', label: 'Frequency', type: 'text' },
-      { key: 'distance_km', label: 'KM / Month', type: 'number' },
+      { key: 'frequency', label: 'Frequency', type: 'number', width: 110, hint: 'Times per year' },
+      { key: 'km', label: 'KM', type: 'number', width: 110, hint: 'Distance covered each time' },
+      { key: 'distance_km', label: 'KM / Year', type: 'number', computed: true },
     ],
     totals: { distance_km: 'sum' },
   },
@@ -286,7 +287,7 @@ const tabs = [
   { id: 'balance-sheet', label: 'Balance Sheet', view: 'balance', tables: ['Capital'] },
   { id: 'assets-liabilities', label: 'Assets & Liabilities', tables: ['Entries', 'Accounts'] },
   { id: 'expenses', label: 'Expenses', tables: ['Expenses', 'Bills', 'AnnualFees'] },
-  { id: 'deposits', label: 'Deposits', tables: ['DepositsEGP', 'DepositsUSD'] },
+  { id: 'deposits', label: 'Deposits', summary: 'deposits', tables: ['DepositsEGP', 'DepositsUSD'] },
   { id: 'cash-flow', label: 'Cash Flow', tables: ['CashFlow', 'Horizon'] },
   { id: 'yunis-saving', label: "Yunis's Saving", tables: ['YunisParams', 'YunisProjection'] },
   { id: 'debts', label: 'Debts', tables: ['Debts'] },
@@ -431,6 +432,15 @@ function compute(db, rates) {
   const egpDeposits = sum(db.DepositsEGP, 'amount');
   const usdDeposits = sum(db.DepositsUSD, 'amount');
 
+  const depositRows = [...(db.DepositsEGP || []), ...(db.DepositsUSD || [])];
+  const depositSummary = {
+    // Interest is held in each deposit's own currency, so convert to compare.
+    monthlyInterest: sum(db.DepositsEGP, 'monthly') + sum(db.DepositsUSD, 'monthly') * usdRate,
+    days: [...new Set(depositRows.map((r) => r.day).filter((d) => Number.isFinite(d)))].sort((a, b) => a - b),
+    count: depositRows.length,
+    banks: new Set(depositRows.map((r) => r.bank).filter(Boolean)).size,
+  };
+
   // --- Furniture ----------------------------------------------------------
   // Totalled before the ledger, because a ledger entry can now link to it.
   for (const r of db.Furniture || []) r.amount = num(r.count) * num(r.price);
@@ -447,7 +457,11 @@ function compute(db, rates) {
   }
 
   // --- Driving / fuel -----------------------------------------------------
-  const kmPerMonth = sum(db.DrivingMonthly, 'distance_km');
+  for (const r of db.DrivingMonthly || []) r.distance_km = num(r.km) * num(r.frequency);
+  const kmPerYear = sum(db.DrivingMonthly, 'distance_km');
+  const kmPerMonth = kmPerYear / 12;
+
+  // Fuel use is litres per 100 km, so the distance is scaled to match it.
   const fuelCost = (kmPerMonth / 100) * (s.litres_per_100km || 0) * (s.egp_per_litre || 0);
 
   // --- Expense roll-ups ---------------------------------------------------
@@ -525,8 +539,10 @@ function compute(db, rates) {
       usdDeposits,
       furnitureTotal,
       usdDepositsEgp: usdDeposits * usdRate,
+      kmPerYear,
       kmPerMonth,
       fuelCost,
+      deposits: depositSummary,
       billsTotal,
       annualFeesTotal,
       expensesTotal,
@@ -572,6 +588,8 @@ function tableTotals(name, rows) {
 const DATA_URL = new URL('finance.xlsx', document.baseURI).href;
 const STORE_KEY = 'personal-finance:db';
 const AUTH_KEY = 'personal-finance:authed';
+// Which published file the stored copy was taken from.
+const BASELINE_KEY = 'personal-finance:baseline';
 const PASSWORD = '9987';
 
 // app.js overrides window.fetch below, so keep the real one for our own calls.
@@ -600,28 +618,51 @@ async function loadRates() {
   return rates;
 }
 
+async function digest(bytes) {
+  const h = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * The stored copy is only trustworthy while the file it was taken from is
+ * still the one being published. Once the repo moves on — a commit from
+ * another device, or an edit to the workbook itself — the published file
+ * wins, otherwise this browser would sit on a snapshot forever.
+ */
 async function loadDb() {
   await loadRates();
   if (db) return db;
 
   const saved = localStorage.getItem(STORE_KEY);
-  if (saved) {
+  let bytes = null;
+  try {
+    const res = await realFetch(DATA_URL, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    bytes = new Uint8Array(await res.arrayBuffer());
+  } catch (e) {
+    // Being offline is survivable as long as this browser has its own copy.
+    if (!saved) throw new ApiError(500, `Could not load finance.xlsx (${e.message})`);
+  }
+
+  const published = bytes ? await digest(bytes) : null;
+  if (saved && (!published || localStorage.getItem(BASELINE_KEY) === published)) {
     try {
       db = JSON.parse(saved);
       return db;
     } catch {
       localStorage.removeItem(STORE_KEY);
     }
+  } else if (saved) {
+    if (typeof toast === 'function') toast('Loaded newer figures from the repo');
   }
 
-  const res = await realFetch(DATA_URL, { cache: 'no-store' });
-  if (!res.ok) throw new ApiError(500, `Could not load finance.xlsx (${res.status})`);
-  const wb = XLSX.read(new Uint8Array(await res.arrayBuffer()), { type: 'array', cellDates: false });
-
+  const wb = XLSX.read(bytes, { type: 'array', cellDates: false });
   db = {};
   for (const [name, def] of Object.entries(tables)) {
     db[name] = sheetToRows(wb.Sheets[name], def);
   }
+  localStorage.removeItem(STORE_KEY);
+  localStorage.setItem(BASELINE_KEY, published);
   return db;
 }
 
@@ -830,7 +871,8 @@ async function push() {
 
   try {
     await loadDb();
-    const content = base64(new Uint8Array(XLSX.write(workbook(), { bookType: 'xlsx', type: 'array' })));
+    const bytes = new Uint8Array(XLSX.write(workbook(), { bookType: 'xlsx', type: 'array' }));
+    const content = base64(bytes);
     const put = async () => gh(`/repos/${REPO.owner}/${REPO.repo}/contents/${REPO.path}`, {
       method: 'PUT',
       body: JSON.stringify({
@@ -851,6 +893,8 @@ async function push() {
     }
 
     fileSha = res.content.sha;
+    // What we just pushed is now the published file.
+    localStorage.setItem(BASELINE_KEY, await digest(bytes));
     setStatus(`Saved ${new Date().toLocaleTimeString()}`);
   } catch (e) {
     dirty = true;

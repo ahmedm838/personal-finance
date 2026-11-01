@@ -13,6 +13,8 @@
 const DATA_URL = new URL('finance.xlsx', document.baseURI).href;
 const STORE_KEY = 'personal-finance:db';
 const AUTH_KEY = 'personal-finance:authed';
+// Which published file the stored copy was taken from.
+const BASELINE_KEY = 'personal-finance:baseline';
 const PASSWORD = '9987';
 
 // app.js overrides window.fetch below, so keep the real one for our own calls.
@@ -41,28 +43,51 @@ async function loadRates() {
   return rates;
 }
 
+async function digest(bytes) {
+  const h = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * The stored copy is only trustworthy while the file it was taken from is
+ * still the one being published. Once the repo moves on — a commit from
+ * another device, or an edit to the workbook itself — the published file
+ * wins, otherwise this browser would sit on a snapshot forever.
+ */
 async function loadDb() {
   await loadRates();
   if (db) return db;
 
   const saved = localStorage.getItem(STORE_KEY);
-  if (saved) {
+  let bytes = null;
+  try {
+    const res = await realFetch(DATA_URL, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    bytes = new Uint8Array(await res.arrayBuffer());
+  } catch (e) {
+    // Being offline is survivable as long as this browser has its own copy.
+    if (!saved) throw new ApiError(500, `Could not load finance.xlsx (${e.message})`);
+  }
+
+  const published = bytes ? await digest(bytes) : null;
+  if (saved && (!published || localStorage.getItem(BASELINE_KEY) === published)) {
     try {
       db = JSON.parse(saved);
       return db;
     } catch {
       localStorage.removeItem(STORE_KEY);
     }
+  } else if (saved) {
+    if (typeof toast === 'function') toast('Loaded newer figures from the repo');
   }
 
-  const res = await realFetch(DATA_URL, { cache: 'no-store' });
-  if (!res.ok) throw new ApiError(500, `Could not load finance.xlsx (${res.status})`);
-  const wb = XLSX.read(new Uint8Array(await res.arrayBuffer()), { type: 'array', cellDates: false });
-
+  const wb = XLSX.read(bytes, { type: 'array', cellDates: false });
   db = {};
   for (const [name, def] of Object.entries(tables)) {
     db[name] = sheetToRows(wb.Sheets[name], def);
   }
+  localStorage.removeItem(STORE_KEY);
+  localStorage.setItem(BASELINE_KEY, published);
   return db;
 }
 
@@ -271,7 +296,8 @@ async function push() {
 
   try {
     await loadDb();
-    const content = base64(new Uint8Array(XLSX.write(workbook(), { bookType: 'xlsx', type: 'array' })));
+    const bytes = new Uint8Array(XLSX.write(workbook(), { bookType: 'xlsx', type: 'array' }));
+    const content = base64(bytes);
     const put = async () => gh(`/repos/${REPO.owner}/${REPO.repo}/contents/${REPO.path}`, {
       method: 'PUT',
       body: JSON.stringify({
@@ -292,6 +318,8 @@ async function push() {
     }
 
     fileSha = res.content.sha;
+    // What we just pushed is now the published file.
+    localStorage.setItem(BASELINE_KEY, await digest(bytes));
     setStatus(`Saved ${new Date().toLocaleTimeString()}`);
   } catch (e) {
     dirty = true;

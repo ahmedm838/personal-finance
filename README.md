@@ -44,6 +44,12 @@ Worth knowing:
 - Only `docs/finance.xlsx` is written. The local `data/finance.xlsx` is a
   separate, encrypted file and does not change — run `npm run pull:pages` to
   bring live edits into it.
+- A browser keeps its own copy of the database, so it does not re-download
+  the workbook on every load. It checks first: if the published file is no
+  longer the one that copy came from — someone edited on another device, or
+  the workbook was changed in the repo — the published file wins and the
+  local copy is dropped. Unsaved edits made while disconnected would go with
+  it, which is why saving is automatic.
 - If the token is ever rejected — expired, revoked, deleted — the app forgets
   it and the Connect button comes back, so a dead token never sits there
   failing silently. To remove one deliberately, clear site data for
@@ -68,10 +74,10 @@ getting around that is not something worth building on. The open API carries
 market mid rates, which run close to the CBE sell price but are not the same
 number — about 0.17% below it when this was set up.
 
-If `rates.json` is missing, or the rates in it are not usable numbers, the
-`usd_rate` and `eur_rate` rows in Settings are used instead, and the balance
-sheet says so under the cards. The fetch refuses to publish a rate outside a
-plausible range rather than let a bad figure rewrite the whole statement.
+The rates no longer live in Settings — `rates.json` is the only source, and
+the balance sheet says so under the cards when it is missing or unusable.
+The fetch refuses to publish a rate outside a plausible range rather than let
+a bad figure rewrite the whole statement.
 
 ## Running it
 
@@ -174,6 +180,9 @@ then force the rebuild to publish your local change.
 | Expenses → Bills | `Bills` total, rounded up to 500 |
 | Expenses → Benzene | Fuel cost, rounded up to 100 |
 | Fuel cost | Monthly km ÷ 100 × L/100km × EGP/L |
+| Monthly km | `DrivingMonthly` km per year ÷ 12 |
+| Driving km per year | Times per year × km each time |
+| Deposit monthly interest total | EGP interest + USD interest × USD rate |
 | Expense share % | Amount ÷ expenses total |
 | Furniture amount | Count × price |
 | Cash flow earnings / saving | Interest + salary + other income; − expenses |

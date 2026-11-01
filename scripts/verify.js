@@ -2,6 +2,11 @@
 
 /** Reconciles the imported database against the original workbook's figures. */
 
+// The rates the original workbook valued foreign holdings at. They are no
+// longer in Settings, and the live ones move daily, so reconciling against
+// the original has to pin them here.
+const ORIGINAL_RATES = { usd: 55.85, eur: 62.3174, source: 'original workbook' };
+
 const { load } = require('../lib/workbook');
 const { compute, tableTotals } = require('../lib/compute');
 
@@ -29,7 +34,7 @@ const EXPECTED = [
 
 (async () => {
   const { db } = await load({ force: true });
-  const { balance, derived } = compute(db);
+  const { balance, derived } = compute(db, ORIGINAL_RATES);
 
   const actual = {
     'Current assets': balance.assets[0].total,
