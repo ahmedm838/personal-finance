@@ -15,12 +15,18 @@ const el = (tag, props = {}, kids = []) => {
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
+/** 2026-11-01 reads as 01-11-2026; anything else is left alone. */
+const asDate = (v) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v ?? ''));
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : String(v ?? '');
+};
+
 const fmt = {
   money: (v) => (isNum(v) ? v.toLocaleString('en-US', { maximumFractionDigits: 2 }) : ''),
   number: (v) => (isNum(v) ? v.toLocaleString('en-US', { maximumFractionDigits: 3 }) : ''),
   int: (v) => (isNum(v) ? String(Math.round(v)) : ''),
   percent: (v) => (isNum(v) ? `${(v * 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}%` : ''),
-  date: (v) => v || '',
+  date: (v) => asDate(v),
   text: (v) => (v === null || v === undefined ? '' : String(v)),
 };
 
@@ -456,7 +462,7 @@ function rateNote(d) {
   else if (age === 1) when = ' — yesterday';
   else if (age > 1) when = ` — ${age} days ago`;
 
-  const base = `USD and EUR holdings are valued at the CBE sell rate for ${d.rateDate}${when}.`;
+  const base = `USD and EUR holdings are valued at the CBE sell rate for ${asDate(d.rateDate)}${when}.`;
   return d.rateAttribution ? `${base} Rates via ${d.rateAttribution}.` : base;
 }
 
@@ -551,7 +557,7 @@ function render({ toTop = false } = {}) {
   const cell = active && active.dataset ? active.dataset.cell : null;
   const caret = active && typeof active.selectionStart === 'number' ? active.selectionStart : null;
 
-  $('#as-of').textContent = `as of ${state.balance.asOf}`;
+  $('#as-of').textContent = `as of ${asDate(state.balance.asOf)}`;
 
   const tabsBar = $('#tabs');
   tabsBar.replaceChildren();
@@ -572,6 +578,12 @@ function render({ toTop = false } = {}) {
     if (tab.summary === 'deposits') content.append(renderDepositsSummary());
     for (const name of tab.tables) content.append(renderTablePanel(name));
   }
+  for (const row of content.querySelectorAll('tr.filter-row')) {
+    const heading = row.previousElementSibling;
+    if (!heading) continue;
+    for (const th of row.children) th.style.top = `${heading.offsetHeight}px`;
+  }
+
   if (toTop) {
     window.scrollTo({ top: 0 });
     return;

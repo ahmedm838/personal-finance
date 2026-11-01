@@ -221,7 +221,8 @@ thead th {
   text-transform: uppercase;
   letter-spacing: .04em;
   padding: 9px 10px;
-  white-space: nowrap;
+  white-space: normal;
+  vertical-align: bottom;
   position: sticky;
   top: 0;
 }
