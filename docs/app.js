@@ -26,6 +26,7 @@ const fmt = {
 
 const display = (col, v) => (col.whole ? whole(v) : (fmt[col.type] || fmt.text)(v));
 const whole = (v) => (isNum(v) ? Math.round(v).toLocaleString('en-US') : '');
+const wholePercent = (v) => (isNum(v) ? `${Math.round(v * 100).toLocaleString('en-US')}%` : '');
 
 const card = (k, v, cls = '') => el('div', { className: 'card' }, [
   el('div', { className: 'k', textContent: k }),
@@ -410,18 +411,18 @@ function sideTable(title, groups, total) {
   for (const g of groups) {
     tbody.append(el('tr', { className: 'bs-section' }, [
       el('td', { textContent: g.section }),
-      el('td', { className: 'num', textContent: fmt.money(g.total) }),
+      el('td', { className: 'num', textContent: whole(g.total) }),
     ]));
     for (const line of g.lines) {
       tbody.append(el('tr', { className: 'bs-line' }, [
         el('td', { textContent: line.label }),
-        el('td', { className: 'num', textContent: fmt.money(line.amount) }),
+        el('td', { className: 'num', textContent: whole(line.amount) }),
       ]));
     }
   }
   tbody.append(el('tr', { className: 'bs-total' }, [
     el('td', { textContent: 'Total' }),
-    el('td', { className: 'num', textContent: fmt.money(total) }),
+    el('td', { className: 'num', textContent: whole(total) }),
   ]));
 
   return el('section', { className: 'panel' }, [
@@ -436,6 +437,29 @@ function sideTable(title, groups, total) {
   ]);
 }
 
+/**
+ * How old the rate is matters: the CBE publishes around midday Cairo time
+ * and the mirror follows some hours later, so a morning visit sees the
+ * previous working day's figure.
+ */
+function rateNote(d) {
+  if (d.rateOverridden) {
+    return 'USD and EUR holdings are valued at the rates typed into Settings, not the CBE feed.';
+  }
+  if (!d.rateIsLive) {
+    return 'No rates available, so foreign holdings cannot be valued. Type a rate into Settings, or run the rate fetch.';
+  }
+
+  const age = d.rateAgeDays;
+  let when = '';
+  if (age === 0) when = ' — today';
+  else if (age === 1) when = ' — yesterday';
+  else if (age > 1) when = ` — ${age} days ago`;
+
+  const base = `USD and EUR holdings are valued at the CBE sell rate for ${d.rateDate}${when}.`;
+  return d.rateAttribution ? `${base} Rates via ${d.rateAttribution}.` : base;
+}
+
 function renderBalance() {
   const b = state.balance;
   const s = b.summary;
@@ -445,12 +469,12 @@ function renderBalance() {
 
 
   frag.append(el('div', { className: 'cards' }, [
-    card('Capital paid', fmt.money(s.capitalPaid)),
-    card('Equity', fmt.money(s.equity)),
-    card('Profit & loss', fmt.money(s.profit), s.profit >= 0 ? 'pos' : 'neg'),
-    card('Return on capital', fmt.percent(s.overYears), s.overYears >= 0 ? 'pos' : 'neg'),
+    card('Capital paid', whole(s.capitalPaid)),
+    card('Equity', whole(s.equity)),
+    card('Profit & loss', whole(s.profit), s.profit >= 0 ? 'pos' : 'neg'),
+    card('Return on capital', wholePercent(s.overYears), s.overYears >= 0 ? 'pos' : 'neg'),
     card('Years tracked', s.years.toFixed(2)),
-    card('Average per year', fmt.percent(s.averagePerYear)),
+    card('Average per year', wholePercent(s.averagePerYear)),
     card('USD Ex. Rate', rate(d.usdRate)),
     card('EUR Ex. Rate', rate(d.eurRate)),
     card('Monthly KM', whole(d.kmPerMonth)),
@@ -461,13 +485,7 @@ function renderBalance() {
     textContent: 'Assets and liabilities are calculated from the Assets & Liabilities tab. Capital is editable below.',
   }));
 
-  frag.append(el('p', {
-    className: 'hint',
-    textContent: d.rateIsLive
-      ? `USD and EUR holdings are valued at the ${d.rateSource}${d.rateDate ? ` published ${d.rateDate}` : ''}.`
-        + (d.rateAttribution ? ` Rates via ${d.rateAttribution}.` : '')
-      : 'No published rates found — foreign holdings cannot be valued. Run the rate fetch.',
-  }));
+  frag.append(el('p', { className: 'hint', textContent: rateNote(d) }));
 
   frag.append(el('div', { className: 'columns' }, [
     sideTable('Assets', b.assets, b.totals.assets),

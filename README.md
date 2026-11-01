@@ -105,9 +105,20 @@ The rates no longer live in Settings. The balance sheet names the source and
 the time under the cards, and says plainly when neither the live source nor
 the published copy could be read.
 
-The CBE publishes once a working day, so opening the page twice in an
-afternoon shows the same figure both times. If it ever looks behind, compare
-the date under the cards with the date on the CBE page.
+The balance sheet says how old the rate is — "for 2026-10-29 — 3 days ago",
+or simply "today" — so a figure that is behind is visible rather than
+something you have to go and check.
+
+It often will be behind in the morning. The CBE publishes around midday
+Cairo time, and the mirror has historically committed between 13:20 and
+20:30 UTC, so the first hours of a working day have no rate for that day
+from anybody. Friday and Saturday have none at all.
+
+When that matters, the Settings tab has **USD rate override** and **EUR rate
+override**. Fill both and they are used instead of the feed, dated today's
+date, and the balance sheet says it is using them. Clear them and the feed
+takes over again. They are the way to put the CBE figure in before the
+mirror catches up; nothing else types a rate any more.
 The fetch refuses to publish a rate outside a plausible range rather than let
 a bad figure rewrite the whole statement.
 
@@ -203,7 +214,7 @@ then force the rebuild to publish your local change.
 | --- | --- |
 | Balance sheet asset & liability lines | Sum of `Entries` rows per account |
 | Equity / Profit & loss | Assets − liabilities, then − capital paid |
-| Entry amount, foreign currency | FX amount × the published rate (Settings as fallback) |
+| Entry amount, foreign currency | FX amount × the CBE sell rate, or the Settings override |
 | Entry amount, EGP deposits | `DepositsEGP` total |
 | Entry amount, USD deposits | `DepositsUSD` total × USD rate |
 | Entry amount, furniture | `Furniture` total |
