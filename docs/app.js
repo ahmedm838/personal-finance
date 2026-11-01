@@ -25,6 +25,7 @@ const fmt = {
 };
 
 const display = (col, v) => (fmt[col.type] || fmt.text)(v);
+const whole = (v) => (isNum(v) ? Math.round(v).toLocaleString('en-US') : '');
 
 const card = (k, v, cls = '') => el('div', { className: 'card' }, [
   el('div', { className: 'k', textContent: k }),
@@ -305,7 +306,7 @@ function renderGrid(name) {
     const tr = el('tr');
     def.columns.forEach((col, idx) => {
       const value = valueFor(col);
-      const text = format === 'int' ? fmt.int(value) : display(col, value);
+      const text = format === 'int' ? whole(value) : display(col, value);
       tr.append(el('td', {
         className: numeric(col) ? 'num' : '',
         textContent: value !== undefined ? text : (idx === 0 ? label : ''),
@@ -452,7 +453,7 @@ function renderBalance() {
     card('Average per year', fmt.percent(s.averagePerYear)),
     card('USD Ex. Rate', rate(d.usdRate)),
     card('EUR Ex. Rate', rate(d.eurRate)),
-    card('Monthly KM', fmt.int(d.kmPerMonth)),
+    card('Monthly KM', whole(d.kmPerMonth)),
   ]));
 
   frag.append(el('p', {
