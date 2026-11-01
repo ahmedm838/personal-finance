@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const crypto = require('crypto');
 const XLSX = require('xlsx');
 
 const { tables } = require('../lib/schema');
@@ -71,7 +72,7 @@ function swap(html, find, replace) {
   return html.replace(find, replace);
 }
 
-function buildHtml() {
+function buildHtml(v) {
   let html = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
 
   html = swap(
@@ -91,10 +92,18 @@ function buildHtml() {
       + '      <span class="muted">· browser copy</span>',
   );
 
+  html = swap(
+    html,
+    '<link rel="stylesheet" href="styles.css">',
+    `<link rel="stylesheet" href="styles.css?v=${v.css}">`,
+  );
+
+  // Pages caches these hard and the filenames never change, so without a
+  // version in the URL a browser keeps running the previous deploy.
   return swap(
     html,
     '<script src="app.js"></script>',
-    `<script src="${XLSX_CDN}"></script>\n<script src="static-api.js"></script>\n<script src="app.js"></script>`,
+    `<script src="${XLSX_CDN}"></script>\n<script src="static-api.js?v=${v.api}"></script>\n<script src="app.js?v=${v.app}"></script>`,
   );
 }
 
@@ -131,9 +140,16 @@ async function main() {
     .join('\n');
   fs.writeFileSync(path.join(OUT, 'static-api.js'), `'use strict';\n\n(() => {\n${config}\n${bundle}\n})();\n`);
 
-  fs.writeFileSync(path.join(OUT, 'index.html'), buildHtml());
   fs.copyFileSync(path.join(ROOT, 'public', 'app.js'), path.join(OUT, 'app.js'));
   fs.copyFileSync(path.join(ROOT, 'public', 'styles.css'), path.join(OUT, 'styles.css'));
+
+  // Hashed after writing, so the URL only moves when the file really did.
+  const stamp = (f) => crypto.createHash('sha256').update(fs.readFileSync(path.join(OUT, f))).digest('hex').slice(0, 8);
+  fs.writeFileSync(path.join(OUT, 'index.html'), buildHtml({
+    app: stamp('app.js'),
+    api: stamp('static-api.js'),
+    css: stamp('styles.css'),
+  }));
   fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
   XLSX.writeFile(toWorkbook(db), PUBLISHED);
 
