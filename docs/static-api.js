@@ -52,7 +52,7 @@ const tables = {
       { key: 'account', label: 'Account', type: 'select', optionsFrom: 'Accounts.level3' },
       { key: 'item', label: 'Item Description', type: 'text', width: 280 },
       { key: 'currency', label: 'Ccy', type: 'select', options: ['EGP', 'USD', 'EUR'], width: 76 },
-      { key: 'fx_amount', label: 'FX Amount', type: 'number', width: 110, hint: 'Amount in the foreign currency. Leave blank for EGP.' },
+      { key: 'fx_amount', label: 'Amount', type: 'number', width: 130, derived: true, hint: "In the row's own currency. Filled in for you when the row is linked." },
       {
         key: 'link',
         label: 'Linked to',
@@ -66,8 +66,7 @@ const tables = {
         ],
       },
       { key: 'remarks', label: 'Remarks', type: 'text' },
-      // Stored, but overwritten by compute.js for FX rows and linked rows.
-      { key: 'amount', label: 'Amount (EGP)', type: 'money', derived: true, width: 150 },
+      { key: 'amount', label: 'Amount (EGP)', type: 'money', computed: true, width: 150 },
     ],
     filters: true,
     totals: { amount: 'sum' },
@@ -236,7 +235,7 @@ const tables = {
       { key: 'distance_km', label: 'Distance (KM)', type: 'number' },
       { key: 'round_km', label: 'Round KM', type: 'number', computed: true },
     ],
-    totals: { distance_km: 'sum', round_km: 'sum' },
+    totals: { distance_km: 'sum' },
   },
 
   DrivingMonthly: {
@@ -248,7 +247,7 @@ const tables = {
       { key: 'round_km', label: 'Round KM', type: 'number', width: 110, computed: true },
       { key: 'distance_km', label: 'KM / Year', type: 'number', computed: true },
     ],
-    totals: { round_km: 'sum', distance_km: 'sum' },
+    totals: { distance_km: 'sum' },
     // An extra line under the total, read from the derived figures.
     footRows: [{ label: 'Monthly average', derived: 'kmPerMonth', key: 'distance_km', format: 'int' }],
   },
@@ -507,7 +506,8 @@ function compute(db, rates) {
     else if (r.link === 'debts') r.amount = debtsTotal;
     else if (r.currency === 'USD') r.amount = num(r.fx_amount) * usdRate;
     else if (r.currency === 'EUR') r.amount = num(r.fx_amount) * eurRate;
-    // EGP rows keep their typed amount.
+    // An EGP row is already in pounds, so the two columns agree.
+    else r.amount = num(r.fx_amount);
   }
 
   // --- Driving / fuel -----------------------------------------------------

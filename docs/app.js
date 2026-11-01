@@ -146,9 +146,9 @@ function cellEditor(col, value, commit) {
 function isDerivedHere(tableName, col, row, index) {
   if (col.computed) return true;
   if (!col.derived) return false;
-  if (tableName === 'Entries' && col.key === 'amount') {
-    return Boolean(row.link) || (row.currency && row.currency !== 'EGP');
-  }
+  // A linked row takes its figure from another tab, so there is nothing to
+  // type in its own currency either.
+  if (tableName === 'Entries' && col.key === 'fx_amount') return Boolean(row.link);
   if (tableName === 'Expenses' && col.key === 'amount') return Boolean(row.link);
   // The first year is the base the rest of the projection grows from.
   if (tableName === 'CashFlow' && col.key === 'expenses') return index > 0;
@@ -473,11 +473,14 @@ function renderBalance() {
     card('Equity', whole(s.equity)),
     card('Profit & loss', whole(s.profit), s.profit >= 0 ? 'pos' : 'neg'),
     card('Return on capital', wholePercent(s.overYears), s.overYears >= 0 ? 'pos' : 'neg'),
-    card('Years tracked', s.years.toFixed(2)),
+    card('Years tracked', s.years.toFixed(1)),
     card('Average per year', wholePercent(s.averagePerYear)),
     card('USD Ex. Rate', rate(d.usdRate)),
     card('EUR Ex. Rate', rate(d.eurRate)),
     card('Monthly KM', whole(d.kmPerMonth)),
+    card('Expenses', whole(d.expensesTotal)),
+    card('Deposits (EGP)', whole(d.egpDeposits)),
+    card('Deposits (USD)', whole(d.usdDeposits)),
   ]));
 
   frag.append(el('p', {

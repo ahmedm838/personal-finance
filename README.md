@@ -214,7 +214,8 @@ then force the rebuild to publish your local change.
 | --- | --- |
 | Balance sheet asset & liability lines | Sum of `Entries` rows per account |
 | Equity / Profit & loss | Assets − liabilities, then − capital paid |
-| Entry amount, foreign currency | FX amount × the CBE sell rate, or the Settings override |
+| Amount (EGP), pounds | The same as Amount |
+| Amount (EGP), foreign currency | Amount × the CBE sell rate, or the Settings override |
 | Entry amount, EGP deposits | `DepositsEGP` total |
 | Entry amount, USD deposits | `DepositsUSD` total × USD rate |
 | Entry amount, furniture | `Furniture` total |
@@ -243,6 +244,12 @@ then force the rebuild to publish your local change.
 | Monthly average driving | KM per year ÷ 12, shown under the yearly total |
 | Cash flow earnings / saving | Interest + salary + other income; − expenses |
 | 2014–2026 change | (2026 − 2014) ÷ 2014 |
+
+Every row on Assets & Liabilities carries one **Amount**, in whatever currency
+the row is in, and **Amount (EGP)** is worked out from it: the same figure for
+a pound row, or converted at the CBE sell rate for a dollar or euro one. A
+linked row takes its figure from another tab, so its Amount is left blank and
+cannot be typed in.
 
 The Furniture and Debts lines on the balance sheet follow their own tabs, so
 adding a row there moves your assets or liabilities. Deposits work the same
