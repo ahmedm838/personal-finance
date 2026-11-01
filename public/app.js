@@ -24,7 +24,7 @@ const fmt = {
   text: (v) => (v === null || v === undefined ? '' : String(v)),
 };
 
-const display = (col, v) => (fmt[col.type] || fmt.text)(v);
+const display = (col, v) => (col.whole ? whole(v) : (fmt[col.type] || fmt.text)(v));
 const whole = (v) => (isNum(v) ? Math.round(v).toLocaleString('en-US') : '');
 
 const card = (k, v, cls = '') => el('div', { className: 'card' }, [
@@ -464,7 +464,8 @@ function renderBalance() {
   frag.append(el('p', {
     className: 'hint',
     textContent: d.rateIsLive
-      ? `USD and EUR holdings are valued at these rates, from ${d.rateSource}, as of ${new Date(d.rateFetched).toLocaleString()}.`
+      ? `USD and EUR holdings are valued at the ${d.rateSource}${d.rateDate ? ` published ${d.rateDate}` : ''}.`
+        + (d.rateAttribution ? ` Rates via ${d.rateAttribution}.` : '')
       : 'No published rates found — foreign holdings cannot be valued. Run the rate fetch.',
   }));
 

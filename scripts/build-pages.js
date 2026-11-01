@@ -85,12 +85,6 @@ function buildHtml(v) {
     ].join('\n'),
   );
 
-  html = swap(
-    html,
-    '<span class="muted" id="as-of"></span>',
-    '<span class="muted" id="as-of"></span>\n'
-      + '      <span class="muted">· browser copy</span>',
-  );
 
   html = swap(
     html,

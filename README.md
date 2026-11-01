@@ -55,6 +55,11 @@ Worth knowing:
 - The token is kept in that browser's local storage and never committed.
   Every Pages site on `ahmedm838.github.io` shares one origin and therefore
   one local storage, which is why the token should be scoped to this repo.
+- It is per browser, so a phone starts out saying **Not connected** and needs
+  its own Connect. There is no way around that: the repo is public, so a token
+  committed to it so the phone could pick it up would be a token handed to
+  everyone. Either paste the same one on the phone, or make it a second token
+  so it can be revoked on its own.
 - Pages takes a minute or so to rebuild, so another device will lag a commit
   behind.
 - Only `docs/finance.xlsx` is written. The local `data/finance.xlsx` is a
@@ -85,18 +90,24 @@ mornings and commits only when a figure actually moved. Fetch it by hand with:
 npm run fetch:rates
 ```
 
-The source is `open.er-api.com`. The Central Bank of Egypt's own page was the
-first choice, but it sits behind a WAF that rejects automated requests, and
-getting around that is not something worth building on. The open API carries
-market mid rates, which run close to the CBE sell price but are not the same
-number — about 0.17% below it when this was set up.
+The figures are the Central Bank of Egypt's own **sell** price. The CBE's page
+sits behind a WAF that rejects automated requests, so they come from
+AllRatesToday's open-data mirror of the same published table — no key needed,
+and the buy and sell columns are carried through unchanged. The balance sheet
+shows the date the CBE published them, which should match the date on
+<https://www.cbe.org.eg/en/economic-research/statistics/cbe-exchange-rates>.
+
+That mirror is licensed CC BY-NC 4.0, so the app credits AllRatesToday under
+the cards. Personal use is within the licence; selling anything built on it
+would not be.
 
 The rates no longer live in Settings. The balance sheet names the source and
 the time under the cards, and says plainly when neither the live source nor
 the published copy could be read.
 
-Note the source itself only publishes once a day, so opening the page twice
-in an afternoon will show the same figure both times.
+The CBE publishes once a working day, so opening the page twice in an
+afternoon shows the same figure both times. If it ever looks behind, compare
+the date under the cards with the date on the CBE page.
 The fetch refuses to publish a rate outside a plausible range rather than let
 a bad figure rewrite the whole statement.
 

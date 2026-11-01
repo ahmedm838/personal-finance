@@ -1,7 +1,8 @@
 {
-  "usd": 56.0307,
-  "eur": 62.4704,
-  "source": "open.er-api.com",
-  "sourceUpdated": "Sun, 01 Nov 2026 00:02:31 +0000",
-  "fetched": "2026-11-01T14:16:38.375Z"
+  "usd": 56.1234,
+  "eur": 62.5776,
+  "source": "CBE sell rate",
+  "rateDate": "2026-10-29",
+  "attribution": "AllRatesToday (CC BY-NC 4.0)",
+  "fetched": "2026-11-01T15:38:59.725Z"
 }

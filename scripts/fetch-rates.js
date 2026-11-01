@@ -1,12 +1,13 @@
 'use strict';
 
 /**
- * Publishes the exchange rates the balance sheet values foreign holdings at.
+ * Publishes the exchange rates the balance sheet values foreign holdings at:
+ * the Central Bank of Egypt's own sell price.
  *
- * The Central Bank of Egypt's own page sits behind a WAF that rejects
- * automated requests, so this reads open.er-api.com, which exists to be called
- * by programs. Its figures are market mid rates — close to the CBE's official
- * sell price, but not the same number.
+ * The CBE's page is behind a WAF that rejects automated requests, so this
+ * reads AllRatesToday's open-data mirror of the same published table, which
+ * needs no key and carries the buy and sell columns unchanged. Attribution is
+ * required by its licence and is shown in the app.
  *
  * No dependencies, so the scheduled workflow needs no install step.
  */
@@ -15,37 +16,35 @@ const fs = require('fs');
 const path = require('path');
 
 const OUT = path.join(__dirname, '..', 'docs', 'rates.json');
-const SOURCE = 'open.er-api.com';
+const SOURCE = 'https://raw.githubusercontent.com/AllRates-Today/central-bank-exchange-rates/main/data/cbe/latest.json';
+const ATTRIBUTION = 'AllRatesToday (CC BY-NC 4.0)';
 
-async function rateToEgp(base) {
-  const res = await fetch(`https://open.er-api.com/v6/latest/${base}`, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!res.ok) throw new Error(`${base}: HTTP ${res.status}`);
+/** The sell price for one currency against the pound. */
+function sellRate(body, base) {
+  const row = (body.rates || []).find((r) => r.base === base && r.quote === 'EGP' && r.type === 'sell');
+  const value = row && Number(row.value);
 
-  const body = await res.json();
-  if (body.result !== 'success') throw new Error(`${base}: ${body['error-type'] || 'unsuccessful response'}`);
-
-  const rate = body.rates && body.rates.EGP;
-  if (!Number.isFinite(rate) || rate <= 0) throw new Error(`${base}: no usable EGP rate in the response`);
-  return { rate, updated: body.time_last_update_utc };
+  // A wrong rate would silently rewrite every foreign holding, so refuse
+  // anything that cannot plausibly be a pound rate rather than publish it.
+  if (!Number.isFinite(value) || value < 5 || value > 500) {
+    throw new Error(`No usable ${base} sell rate in the feed`);
+  }
+  return Number(value.toFixed(4));
 }
 
 async function main() {
-  const [usd, eur] = await Promise.all([rateToEgp('USD'), rateToEgp('EUR')]);
+  const res = await fetch(SOURCE, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-  // A garbage rate would silently rewrite every foreign holding, so refuse
-  // anything that cannot plausibly be an EGP rate rather than publish it.
-  for (const [name, rate] of [['USD', usd.rate], ['EUR', eur.rate]]) {
-    if (rate < 5 || rate > 500) throw new Error(`${name}/EGP of ${rate} is outside the plausible range; refusing to publish.`);
-  }
+  const body = await res.json();
+  if (body.source !== 'cbe') throw new Error(`Feed is for "${body.source}", not the CBE`);
 
   const payload = {
-    usd: Number(usd.rate.toFixed(4)),
-    eur: Number(eur.rate.toFixed(4)),
-    source: SOURCE,
-    sourceUpdated: usd.updated,
+    usd: sellRate(body, 'USD'),
+    eur: sellRate(body, 'EUR'),
+    source: 'CBE sell rate',
+    rateDate: body.date,
+    attribution: ATTRIBUTION,
     fetched: new Date().toISOString(),
   };
 
@@ -54,13 +53,13 @@ async function main() {
   let current = null;
   try { current = JSON.parse(fs.readFileSync(OUT, 'utf8')); } catch { /* first run */ }
   if (current && current.usd === payload.usd && current.eur === payload.eur) {
-    console.log(`\n  USD/EGP ${payload.usd}    EUR/EGP ${payload.eur}    unchanged\n`);
+    console.log(`\n  USD ${payload.usd}    EUR ${payload.eur}    unchanged\n`);
     return;
   }
 
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, `${JSON.stringify(payload, null, 2)}\n`);
-  console.log(`\n  USD/EGP ${payload.usd}    EUR/EGP ${payload.eur}    (${SOURCE})\n`);
+  console.log(`\n  USD ${payload.usd}    EUR ${payload.eur}    CBE sell, ${payload.rateDate}\n`);
 }
 
 main().catch((e) => { console.error(`\n  ${e.message}\n`); process.exit(1); });

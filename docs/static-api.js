@@ -164,21 +164,21 @@ const tables = {
     label: 'Cash Flow Projection',
     columns: [
       { key: 'year', label: 'Year', type: 'text', width: 100 },
-      { key: 'deposits', label: 'Deposits', type: 'money', width: 130 },
+      { key: 'deposits', label: 'Deposits', type: 'money', whole: true, width: 130 },
       { key: 'rate', label: 'Rate', type: 'percent', width: 90 },
-      { key: 'interest', label: 'Interest', type: 'money', computed: true, width: 120 },
-      { key: 'salary', label: 'Salary', type: 'money', width: 120 },
-      { key: 'other_income', label: 'Other Income', type: 'money', width: 130 },
-      { key: 'earnings', label: 'Earnings', type: 'money', computed: true, width: 130 },
+      { key: 'interest', label: 'Interest', type: 'money', whole: true, computed: true, width: 120 },
+      { key: 'salary', label: 'Salary', type: 'money', whole: true, width: 120 },
+      { key: 'other_income', label: 'Other', type: 'money', whole: true, width: 130 },
+      { key: 'earnings', label: 'Earnings', type: 'money', whole: true, computed: true, width: 130 },
       { key: 'inf_rate', label: 'Inf. Rate', type: 'percent', width: 100 },
       // The first year is typed in; later years grow from the one before.
-      { key: 'expenses', label: 'Expenses', type: 'money', derived: true, width: 120 },
-      { key: 'saving', label: 'Saving', type: 'money', computed: true, width: 120 },
-      { key: 'yearly_saving', label: 'Yearly Saving', type: 'money', computed: true, width: 140 },
-      { key: 'added_deposits', label: 'Added Deposits', type: 'money', width: 150 },
-      { key: 'to_be_invested', label: 'To Be Invested', type: 'money', width: 150 },
-      { key: 'dividends_spending', label: 'Dividends Spending', type: 'money', width: 180 },
-      { key: 'spending', label: 'Spending', type: 'money', computed: true, width: 120 },
+      { key: 'expenses', label: 'Expenses', type: 'money', whole: true, derived: true, width: 120 },
+      { key: 'saving', label: 'Saving', type: 'money', whole: true, computed: true, width: 120 },
+      { key: 'yearly_saving', label: 'Yearly Saving', type: 'money', whole: true, computed: true, width: 140 },
+      { key: 'added_deposits', label: 'Added Deposits', type: 'money', whole: true, width: 150 },
+      { key: 'to_be_invested', label: 'To Be Invested', type: 'money', whole: true, width: 150 },
+      { key: 'dividends_spending', label: 'Dividends Spending', type: 'money', whole: true, width: 180 },
+      { key: 'spending', label: 'Spending', type: 'money', whole: true, computed: true, width: 120 },
     ],
   },
 
@@ -187,9 +187,9 @@ const tables = {
     columns: [
       { key: 'item', label: 'Item', type: 'text', width: 260 },
       // Deposits and Invested are read off the projection; the rest is typed.
-      { key: 'value', label: 'Value', type: 'money', derived: true, width: 150 },
+      { key: 'value', label: 'Value', type: 'money', whole: true, derived: true, width: 150 },
       { key: 'rate', label: 'Rate', type: 'percent', width: 90 },
-      { key: 'income', label: 'Monthly Income', type: 'money', width: 150 },
+      { key: 'income', label: 'Monthly Income', type: 'money', whole: true, width: 150 },
       { key: 'remarks', label: 'Remarks', type: 'text', width: 200 },
     ],
   },
@@ -624,6 +624,8 @@ function compute(db, rates) {
       rateIsLive: Boolean(live),
       rateSource: live ? live.source : 'Settings',
       rateFetched: live ? live.fetched : null,
+      rateDate: live ? live.rateDate || null : null,
+      rateAttribution: live ? live.attribution || null : null,
     },
   };
 }
@@ -664,7 +666,10 @@ const AUTH_KEY = 'personal-finance:authed';
 // Which published file the stored copy was taken from.
 const BASELINE_KEY = 'personal-finance:baseline';
 const PASSWORD = '9987';
-const RATE_API = 'https://open.er-api.com/v6/latest/';
+// The CBE's own page refuses automated requests; this is an open mirror of
+// the same published table, no key needed.
+const RATE_FEED = 'https://raw.githubusercontent.com/AllRates-Today/central-bank-exchange-rates/main/data/cbe/latest.json';
+const RATE_ATTRIBUTION = 'AllRatesToday (CC BY-NC 4.0)';
 // Signed out after this long without a click, a key or a scroll.
 const IDLE_LIMIT = 7 * 60 * 1000;
 
@@ -702,16 +707,14 @@ class ApiError extends Error {
   }
 }
 
-async function rateToEgp(base) {
-  const res = await realFetch(`${RATE_API}${base}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-  const body = await res.json();
-  const rate = body.rates && body.rates.EGP;
+/** The sell price for one currency against the pound. */
+function sellRate(body, base) {
+  const row = (body.rates || []).find((r) => r.base === base && r.quote === 'EGP' && r.type === 'sell');
+  const value = row && Number(row.value);
   // The same guard the scheduled fetch applies: a wrong rate would quietly
   // rewrite every foreign holding.
-  if (!Number.isFinite(rate) || rate < 5 || rate > 500) throw new Error('implausible rate');
-  return { rate: Number(rate.toFixed(4)), updated: body.time_last_update_utc };
+  if (!Number.isFinite(value) || value < 5 || value > 500) throw new Error('implausible rate');
+  return Number(value.toFixed(4));
 }
 
 /**
@@ -723,12 +726,17 @@ async function loadRates() {
   if (rates !== null) return rates;
 
   try {
-    const [usd, eur] = await Promise.all([rateToEgp('USD'), rateToEgp('EUR')]);
+    const res = await realFetch(RATE_FEED, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const body = await res.json();
+    if (body.source !== 'cbe') throw new Error('not the CBE feed');
     rates = {
-      usd: usd.rate,
-      eur: eur.rate,
-      source: 'open.er-api.com',
-      sourceUpdated: usd.updated,
+      usd: sellRate(body, 'USD'),
+      eur: sellRate(body, 'EUR'),
+      source: 'CBE sell rate',
+      rateDate: body.date,
+      attribution: RATE_ATTRIBUTION,
       fetched: new Date().toISOString(),
     };
     return rates;
