@@ -379,3 +379,30 @@ td.actions-cell { width: 1%; white-space: nowrap; padding: 0 8px; }
   padding: 12px 16px;
   border-top: 1px solid var(--line);
 }
+
+/* Keep every figure on one line; the wrapper scrolls when that overflows. */
+tbody td, tfoot td { white-space: nowrap; }
+td .ro { white-space: nowrap; }
+
+.panel-foot { gap: 8px; }
+
+.filter-row th {
+  background: var(--panel);
+  padding: 6px 8px;
+  position: sticky;
+  top: 34px;
+}
+
+.filter-row input {
+  width: 100%;
+  min-width: 60px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+
+.filter-row input:focus { outline: none; border-color: var(--accent); }

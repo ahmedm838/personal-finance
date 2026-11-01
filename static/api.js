@@ -16,6 +16,9 @@ const AUTH_KEY = 'personal-finance:authed';
 // Which published file the stored copy was taken from.
 const BASELINE_KEY = 'personal-finance:baseline';
 const PASSWORD = '9987';
+const RATE_API = 'https://open.er-api.com/v6/latest/';
+// Signed out after this long without a click, a key or a scroll.
+const IDLE_LIMIT = 7 * 60 * 1000;
 
 // app.js overrides window.fetch below, so keep the real one for our own calls.
 const realFetch = window.fetch.bind(window);
@@ -24,6 +27,26 @@ let db = null;
 let rates = null;
 let authed = sessionStorage.getItem(AUTH_KEY) === '1';
 
+let idleTimer = null;
+
+function signOut() {
+  authed = false;
+  clearTimeout(idleTimer);
+  sessionStorage.removeItem(AUTH_KEY);
+  if (typeof showLogin === 'function') showLogin();
+}
+
+/** Any sign of life restarts the clock; silence for IDLE_LIMIT ends it. */
+function noteActivity() {
+  if (!authed) return;
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(signOut, IDLE_LIMIT);
+}
+
+for (const event of ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll']) {
+  window.addEventListener(event, noteActivity, { passive: true, capture: true });
+}
+
 class ApiError extends Error {
   constructor(status, message) {
     super(message);
@@ -31,9 +54,40 @@ class ApiError extends Error {
   }
 }
 
-/** Rates published by the scheduled workflow, if the fetch has ever run. */
+async function rateToEgp(base) {
+  const res = await realFetch(`${RATE_API}${base}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+  const body = await res.json();
+  const rate = body.rates && body.rates.EGP;
+  // The same guard the scheduled fetch applies: a wrong rate would quietly
+  // rewrite every foreign holding.
+  if (!Number.isFinite(rate) || rate < 5 || rate > 500) throw new Error('implausible rate');
+  return { rate: Number(rate.toFixed(4)), updated: body.time_last_update_utc };
+}
+
+/**
+ * Read straight from the source on every load, so the figures are current
+ * rather than whatever the last scheduled run committed. The repo's
+ * rates.json is the fallback for being offline or the source being down.
+ */
 async function loadRates() {
   if (rates !== null) return rates;
+
+  try {
+    const [usd, eur] = await Promise.all([rateToEgp('USD'), rateToEgp('EUR')]);
+    rates = {
+      usd: usd.rate,
+      eur: eur.rate,
+      source: 'open.er-api.com',
+      sourceUpdated: usd.updated,
+      fetched: new Date().toISOString(),
+    };
+    return rates;
+  } catch {
+    // Fall through to the published copy.
+  }
+
   try {
     const res = await realFetch(new URL('rates.json', document.baseURI).href, { cache: 'no-store' });
     rates = res.ok ? await res.json() : false;
@@ -143,11 +197,13 @@ const routes = [
     if (String(body.password ?? '') !== PASSWORD) throw new ApiError(401, 'Wrong password.');
     authed = true;
     sessionStorage.setItem(AUTH_KEY, '1');
+    noteActivity();
     return { ok: true };
   }],
 
   ['POST', /^\/api\/logout$/, () => {
     authed = false;
+    clearTimeout(idleTimer);
     sessionStorage.removeItem(AUTH_KEY);
     return { ok: true };
   }],
@@ -391,6 +447,7 @@ $id('download').addEventListener('click', async () => {
 
 renderSyncButton();
 setStatus(token ? 'Connected' : 'Not connected');
+noteActivity();
 
 // Edits live in this browser until they are saved, so leaving with some
 // still pending is worth a word.

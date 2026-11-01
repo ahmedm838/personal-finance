@@ -2,6 +2,7 @@
 
 let state = null;
 let activeTab = null;
+const filters = {};
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, props = {}, kids = []) => {
@@ -140,13 +141,16 @@ function cellEditor(col, value, commit) {
 }
 
 /** True when the value is calculated for this particular row. */
-function isDerivedHere(tableName, col, row) {
+function isDerivedHere(tableName, col, row, index) {
   if (col.computed) return true;
   if (!col.derived) return false;
   if (tableName === 'Entries' && col.key === 'amount') {
     return Boolean(row.link) || (row.currency && row.currency !== 'EGP');
   }
   if (tableName === 'Expenses' && col.key === 'amount') return Boolean(row.link);
+  // The first year is the base the rest of the projection grows from.
+  if (tableName === 'CashFlow' && col.key === 'expenses') return index > 0;
+  if (tableName === 'Horizon' && col.key === 'value') return row.item === 'Deposits' || row.item === 'Invested';
   return false;
 }
 
@@ -161,7 +165,7 @@ function openRowEditor(tableName, index) {
   const draft = {};
 
   const fields = def.columns
-    .filter((col) => !col.computed && !col.readOnly && !isDerivedHere(tableName, col, row))
+    .filter((col) => !col.computed && !col.readOnly && !isDerivedHere(tableName, col, row, index))
     .map((col) => el('label', { className: 'field' }, [
       el('span', { textContent: col.label }),
       cellEditor(col, row[col.key], (v) => { draft[col.key] = v; }),
@@ -189,6 +193,46 @@ function openRowEditor(tableName, index) {
 
 // --- Table rendering --------------------------------------------------------
 
+/**
+ * Totals over whichever rows are on screen. The payload carries totals for
+ * the whole table; once a filter hides rows, a total counting them is a lie.
+ */
+function totalsFor(def, rows) {
+  if (!def.totals) return null;
+  const column = (key) => rows.reduce((t, r) => t + (Number(r[key]) || 0), 0);
+
+  const out = {};
+  for (const [key, how] of Object.entries(def.totals)) {
+    if (how === 'sum') {
+      out[key] = column(key);
+    } else if (how.startsWith('wavg:')) {
+      const weight = how.slice(5);
+      const total = column(weight);
+      out[key] = total
+        ? rows.reduce((t, r) => t + (Number(r[key]) || 0) * (Number(r[weight]) || 0), 0) / total
+        : 0;
+    }
+  }
+  return out;
+}
+
+/** A box under each heading that narrows the rows as you type. */
+function filterRow(name, def) {
+  const tr = el('tr', { className: 'filter-row' });
+  for (const col of def.columns) {
+    const input = el('input', { type: 'text', value: (filters[name] || {})[col.key] || '', placeholder: 'Filter' });
+    input.setAttribute('aria-label', `Filter by ${col.label}`);
+    input.dataset.cell = `${name}:filter:${col.key}`;
+    input.addEventListener('input', () => {
+      filters[name] = { ...(filters[name] || {}), [col.key]: input.value };
+      render();
+    });
+    tr.append(el('th', {}, input));
+  }
+  tr.append(el('th', { className: 'actions-cell' }));
+  return tr;
+}
+
 function renderGrid(name) {
   const def = state.schema[name];
   const { rows, totals } = state.data[name];
@@ -203,12 +247,24 @@ function renderGrid(name) {
     el('th', { className: 'actions-cell' }),
   ]));
 
+  if (def.filters) thead.append(filterRow(name, def));
+
+  const active = filters[name] || {};
+  const filtering = Object.values(active).some((v) => v && v.trim());
+  const shown = (row) => def.columns.every((col) => {
+    const q = (active[col.key] || '').trim().toLowerCase();
+    return !q || String(display(col, row[col.key])).toLowerCase().includes(q);
+  });
+
   const tbody = el('tbody');
+  const visibleRows = [];
   rows.forEach((row, i) => {
+    if (!shown(row)) return;
+    visibleRows.push(row);
     const tr = el('tr');
     for (const col of def.columns) {
       const td = el('td', { className: numeric(col) ? 'num' : '' });
-      if (col.readOnly || isDerivedHere(name, col, row)) {
+      if (col.readOnly || isDerivedHere(name, col, row, i)) {
         td.append(el('span', {
           className: 'ro calc',
           textContent: display(col, row[col.key]),
@@ -245,13 +301,14 @@ function renderGrid(name) {
   const parts = [thead, tbody];
 
   /** One summary line across the columns, labelled in the first cell. */
-  const footRow = (label, valueFor) => {
+  const footRow = (label, valueFor, format) => {
     const tr = el('tr');
     def.columns.forEach((col, idx) => {
       const value = valueFor(col);
+      const text = format === 'int' ? fmt.int(value) : display(col, value);
       tr.append(el('td', {
         className: numeric(col) ? 'num' : '',
-        textContent: value !== undefined ? display(col, value) : (idx === 0 ? label : ''),
+        textContent: value !== undefined ? text : (idx === 0 ? label : ''),
       }));
     });
     tr.append(el('td', { className: 'actions-cell' }));
@@ -260,10 +317,15 @@ function renderGrid(name) {
 
   const feet = [];
   if (totals) {
-    feet.push(footRow('Total', (col) => (Object.prototype.hasOwnProperty.call(totals, col.key) ? totals[col.key] : undefined)));
+    const shownTotals = filtering ? totalsFor(def, visibleRows) : totals;
+    let counted = '';
+    if (filtering) counted = ` (${visibleRows.length} of ${rows.length})`;
+    else if (def.countInTotal) counted = ` (${rows.length})`;
+
+    feet.push(footRow(`Total${counted}`, (col) => (Object.prototype.hasOwnProperty.call(shownTotals, col.key) ? shownTotals[col.key] : undefined)));
   }
   for (const extra of def.footRows || []) {
-    feet.push(footRow(extra.label, (col) => (col.key === extra.key ? state.derived[extra.derived] : undefined)));
+    feet.push(footRow(extra.label, (col) => (col.key === extra.key ? state.derived[extra.derived] : undefined), extra.format));
   }
   if (feet.length) parts.push(el('tfoot', {}, feet));
 
@@ -315,9 +377,10 @@ function saveButton() {
 function renderTablePanel(name) {
   const def = state.schema[name];
   const head = el('div', { className: 'panel-head' }, el('h2', { textContent: def.label }));
+  const actions = [];
 
   if (!def.keyed) {
-    const add = el('button', { className: 'btn primary', textContent: '+ Add row', type: 'button' });
+    const add = el('button', { className: 'btn', textContent: '+ Add row', type: 'button' });
     add.addEventListener('click', async () => {
       await mutate('POST', `/api/${name}/rows`, {}, 'Row added');
       const last = state.data[name].rows.length - 1;
@@ -328,13 +391,14 @@ function renderTablePanel(name) {
         cell.focus();
       }
     });
-    head.append(add);
+    actions.push(add);
   }
+  if (state.save === 'manual') actions.push(saveButton());
 
   return el('section', { className: 'panel' }, [
     head,
     el('div', { className: def.keyed ? 'panel-body' : '' }, def.keyed ? renderKeyed(name) : renderGrid(name)),
-    ...(state.save === 'manual' ? [el('div', { className: 'panel-foot' }, saveButton())] : []),
+    ...(actions.length ? [el('div', { className: 'panel-foot' }, actions)] : []),
   ]);
 }
 
@@ -388,7 +452,7 @@ function renderBalance() {
     card('Average per year', fmt.percent(s.averagePerYear)),
     card('USD Ex. Rate', rate(d.usdRate)),
     card('EUR Ex. Rate', rate(d.eurRate)),
-    card('Monthly KM', fmt.number(d.kmPerMonth)),
+    card('Monthly KM', fmt.int(d.kmPerMonth)),
   ]));
 
   frag.append(el('p', {

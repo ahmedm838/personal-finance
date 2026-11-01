@@ -13,6 +13,14 @@ recalculate as soon as something they depend on changes.
 <https://ahmedm838.github.io/personal-finance/> — the whole app in the browser,
 nothing to install. Password `9987`.
 
+The session ends after seven minutes without a click, a key or a scroll, and
+the password is asked for again. Anything you had not saved stays in the
+browser and is still there when you sign back in.
+
+The Assets & Liabilities table has a filter box under each heading. Filtering
+narrows the total to the rows on screen and says how many of how many, since
+a total counting hidden rows would be misleading.
+
 Pages serves static files only, so that copy has no server behind it:
 `docs/finance.xlsx` is read into the page with SheetJS and the calculations run
 in JavaScript. Edits are held in that browser's local storage, and are
@@ -68,9 +76,10 @@ Worth knowing:
 The balance sheet shows **USD Ex. Rate** and **EUR Ex. Rate**, and values every
 foreign holding at them, so equity moves with the rate.
 
-They are published to `docs/rates.json` by `.github/workflows/rates.yml`, which
-runs on weekday mornings and commits only when a figure actually moved. Fetch
-them by hand with:
+The page reads them from the source on every load, so they are current
+whenever you open it. `docs/rates.json` is the fallback for being offline or
+the source being down; `.github/workflows/rates.yml` keeps it fresh on weekday
+mornings and commits only when a figure actually moved. Fetch it by hand with:
 
 ```bash
 npm run fetch:rates
@@ -82,8 +91,12 @@ getting around that is not something worth building on. The open API carries
 market mid rates, which run close to the CBE sell price but are not the same
 number — about 0.17% below it when this was set up.
 
-The rates no longer live in Settings — `rates.json` is the only source, and
-the balance sheet says so under the cards when it is missing or unusable.
+The rates no longer live in Settings. The balance sheet names the source and
+the time under the cards, and says plainly when neither the live source nor
+the published copy could be read.
+
+Note the source itself only publishes once a day, so opening the page twice
+in an afternoon will show the same figure both times.
 The fetch refuses to publish a rate outside a plausible range rather than let
 a bad figure rewrite the whole statement.
 
@@ -196,6 +209,12 @@ then force the rebuild to publish your local change.
 | Round KM, driving | Distance × 2 |
 | Driving km per year | Times per year × round KM |
 | Deposit returns by day | Monthly interest grouped by the day each deposit started, EGP and USD kept apart |
+| Cash flow interest | Deposits × rate ÷ 12 |
+| Cash flow expenses | The year before, grown by that year's inflation rate, to the nearest 1,000 |
+| Cash flow yearly saving | Saving × 12 |
+| Cash flow spending | Yearly saving − added deposits − to be invested |
+| Outlook deposits | Last projected year's deposits + its added deposits |
+| Outlook invested | Every year's "to be invested", added up |
 | Driving KM / Year | Times per year × km each time |
 | Expense share % | Amount ÷ expenses total |
 | Furniture amount | Count × price |
@@ -209,6 +228,11 @@ way. Everything else on that tab is a figure you type.
 
 Driving distances are one way. The yearly figure counts the round trip, so a
 purpose covering 62 km at 240 times a year is 29,760 km, not 14,880.
+
+In the cash flow projection only the first year's expenses are typed; every
+year after grows from the one before. The outlook's Deposits and Invested
+follow the projection, but its Total row is still a figure you type, so it
+will not follow them on its own.
 
 A deposit's end date and status are worked out from its start date and
 tenor, so neither can be typed. That also means there is no way to mark one

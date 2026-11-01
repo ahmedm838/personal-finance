@@ -50,9 +50,9 @@ const tables = {
     label: 'Assets & Liabilities',
     columns: [
       { key: 'account', label: 'Account', type: 'select', optionsFrom: 'Accounts.level3' },
-      { key: 'item', label: 'Item Description', type: 'text' },
+      { key: 'item', label: 'Item Description', type: 'text', width: 280 },
       { key: 'currency', label: 'Ccy', type: 'select', options: ['EGP', 'USD', 'EUR'], width: 76 },
-      { key: 'fx_amount', label: 'FX Amount', type: 'number', hint: 'Amount in the foreign currency. Leave blank for EGP.' },
+      { key: 'fx_amount', label: 'FX Amount', type: 'number', width: 110, hint: 'Amount in the foreign currency. Leave blank for EGP.' },
       {
         key: 'link',
         label: 'Linked to',
@@ -67,8 +67,9 @@ const tables = {
       },
       { key: 'remarks', label: 'Remarks', type: 'text' },
       // Stored, but overwritten by compute.js for FX rows and linked rows.
-      { key: 'amount', label: 'Amount (EGP)', type: 'money', derived: true },
+      { key: 'amount', label: 'Amount (EGP)', type: 'money', derived: true, width: 150 },
     ],
+    filters: true,
     totals: { amount: 'sum' },
   },
 
@@ -125,17 +126,18 @@ const tables = {
     label: 'EGP Deposits',
     rowEditor: true,
     columns: [
-      { key: 'bank', label: 'Bank', type: 'text', width: 90 },
-      { key: 'serial', label: 'Serial', type: 'text' },
-      { key: 'rate', label: 'Rate', type: 'percent' },
-      { key: 'tenor', label: 'Tenor', type: 'int', width: 70 },
-      { key: 'start', label: 'Start', type: 'date' },
-      { key: 'end', label: 'End', type: 'date', computed: true },
-      { key: 'status', label: 'Status', type: 'text', computed: true },
-      { key: 'amount', label: 'Amount', type: 'money' },
-      { key: 'monthly', label: 'Monthly', type: 'money', computed: true },
-      { key: 'day', label: 'Day', type: 'int', computed: true },
+      { key: 'bank', label: 'Bank', type: 'text', width: 100 },
+      { key: 'serial', label: 'Serial', type: 'text', width: 200 },
+      { key: 'rate', label: 'Rate', type: 'percent', width: 90 },
+      { key: 'tenor', label: 'Tenor', type: 'int', width: 80 },
+      { key: 'start', label: 'Start', type: 'date', width: 140 },
+      { key: 'end', label: 'End', type: 'date', computed: true, width: 120 },
+      { key: 'status', label: 'Status', type: 'text', computed: true, width: 100 },
+      { key: 'amount', label: 'Amount', type: 'money', width: 130 },
+      { key: 'monthly', label: 'Monthly', type: 'money', computed: true, width: 120 },
+      { key: 'day', label: 'Day', type: 'int', computed: true, width: 70 },
     ],
+    countInTotal: true,
     totals: { amount: 'sum', monthly: 'sum', rate: 'wavg:amount' },
   },
 
@@ -143,49 +145,52 @@ const tables = {
     label: 'USD Deposits',
     rowEditor: true,
     columns: [
-      { key: 'bank', label: 'Holder', type: 'text', width: 90 },
-      { key: 'serial', label: 'Serial', type: 'text' },
-      { key: 'rate', label: 'Rate', type: 'percent' },
-      { key: 'tenor', label: 'Tenor', type: 'int', width: 70 },
-      { key: 'start', label: 'Start', type: 'date' },
-      { key: 'end', label: 'End', type: 'date', computed: true },
-      { key: 'status', label: 'Status', type: 'text', computed: true },
-      { key: 'amount', label: 'Amount (USD)', type: 'money' },
-      { key: 'monthly', label: 'Monthly (USD)', type: 'money', computed: true },
-      { key: 'day', label: 'Day', type: 'int', computed: true },
+      { key: 'bank', label: 'Holder', type: 'text', width: 100 },
+      { key: 'serial', label: 'Serial', type: 'text', width: 200 },
+      { key: 'rate', label: 'Rate', type: 'percent', width: 90 },
+      { key: 'tenor', label: 'Tenor', type: 'int', width: 80 },
+      { key: 'start', label: 'Start', type: 'date', width: 140 },
+      { key: 'end', label: 'End', type: 'date', computed: true, width: 120 },
+      { key: 'status', label: 'Status', type: 'text', computed: true, width: 100 },
+      { key: 'amount', label: 'Amount (USD)', type: 'money', width: 130 },
+      { key: 'monthly', label: 'Monthly (USD)', type: 'money', computed: true, width: 140 },
+      { key: 'day', label: 'Day', type: 'int', computed: true, width: 70 },
     ],
+    countInTotal: true,
     totals: { amount: 'sum', monthly: 'sum', rate: 'wavg:amount' },
   },
 
   CashFlow: {
     label: 'Cash Flow Projection',
     columns: [
-      { key: 'year', label: 'Year', type: 'text', width: 90 },
-      { key: 'deposits', label: 'Deposits', type: 'money' },
-      { key: 'rate', label: 'Rate', type: 'percent' },
-      { key: 'interest', label: 'Interest', type: 'money' },
-      { key: 'salary', label: 'Salary', type: 'money' },
-      { key: 'other_income', label: 'Other Income', type: 'money' },
-      { key: 'earnings', label: 'Earnings', type: 'money', computed: true },
-      { key: 'inf_rate', label: 'Inf. Rate', type: 'percent' },
-      { key: 'expenses', label: 'Expenses', type: 'money' },
-      { key: 'saving', label: 'Saving', type: 'money', computed: true },
-      { key: 'spending', label: 'Spending', type: 'money' },
-      { key: 'yearly_saving', label: 'Yearly Saving', type: 'money' },
-      { key: 'added_deposits', label: 'Added Deposits', type: 'money' },
-      { key: 'to_be_invested', label: 'To Be Invested', type: 'money' },
-      { key: 'dividends_spending', label: 'Dividends Spending', type: 'money' },
+      { key: 'year', label: 'Year', type: 'text', width: 100 },
+      { key: 'deposits', label: 'Deposits', type: 'money', width: 130 },
+      { key: 'rate', label: 'Rate', type: 'percent', width: 90 },
+      { key: 'interest', label: 'Interest', type: 'money', computed: true, width: 120 },
+      { key: 'salary', label: 'Salary', type: 'money', width: 120 },
+      { key: 'other_income', label: 'Other Income', type: 'money', width: 130 },
+      { key: 'earnings', label: 'Earnings', type: 'money', computed: true, width: 130 },
+      { key: 'inf_rate', label: 'Inf. Rate', type: 'percent', width: 100 },
+      // The first year is typed in; later years grow from the one before.
+      { key: 'expenses', label: 'Expenses', type: 'money', derived: true, width: 120 },
+      { key: 'saving', label: 'Saving', type: 'money', computed: true, width: 120 },
+      { key: 'yearly_saving', label: 'Yearly Saving', type: 'money', computed: true, width: 140 },
+      { key: 'added_deposits', label: 'Added Deposits', type: 'money', width: 150 },
+      { key: 'to_be_invested', label: 'To Be Invested', type: 'money', width: 150 },
+      { key: 'dividends_spending', label: 'Dividends Spending', type: 'money', width: 180 },
+      { key: 'spending', label: 'Spending', type: 'money', computed: true, width: 120 },
     ],
   },
 
   Horizon: {
     label: 'Long-term Outlook',
     columns: [
-      { key: 'item', label: 'Item', type: 'text' },
-      { key: 'value', label: 'Value', type: 'money' },
-      { key: 'rate', label: 'Rate', type: 'percent' },
-      { key: 'income', label: 'Monthly Income', type: 'money' },
-      { key: 'remarks', label: 'Remarks', type: 'text' },
+      { key: 'item', label: 'Item', type: 'text', width: 260 },
+      // Deposits and Invested are read off the projection; the rest is typed.
+      { key: 'value', label: 'Value', type: 'money', derived: true, width: 150 },
+      { key: 'rate', label: 'Rate', type: 'percent', width: 90 },
+      { key: 'income', label: 'Monthly Income', type: 'money', width: 150 },
+      { key: 'remarks', label: 'Remarks', type: 'text', width: 200 },
     ],
   },
 
@@ -245,7 +250,7 @@ const tables = {
     ],
     totals: { round_km: 'sum', distance_km: 'sum' },
     // An extra line under the total, read from the derived figures.
-    footRows: [{ label: 'Monthly average', derived: 'kmPerMonth', key: 'distance_km' }],
+    footRows: [{ label: 'Monthly average', derived: 'kmPerMonth', key: 'distance_km', format: 'int' }],
   },
 
   Furniture: {
@@ -530,9 +535,30 @@ function compute(db, rates) {
     r.multiplier = a ? (num(r.y2026) - a) / a : null;
   }
 
+  // The first year carries the expenses figure that is typed in; each year
+  // after it grows from the one before by that year's inflation rate.
+  let previousExpenses = null;
   for (const r of db.CashFlow || []) {
+    r.interest = (num(r.deposits) * num(r.rate)) / 12;
+    if (previousExpenses !== null) {
+      r.expenses = Math.round((previousExpenses * (1 + num(r.inf_rate))) / 1000) * 1000;
+    }
+    previousExpenses = num(r.expenses);
+
     r.earnings = num(r.interest) + num(r.salary) + num(r.other_income);
     r.saving = r.earnings - num(r.expenses);
+    r.yearly_saving = r.saving * 12;
+    r.spending = r.yearly_saving - num(r.added_deposits) - num(r.to_be_invested);
+  }
+
+  // The outlook picks up where the projection leaves off.
+  const lastYear = (db.CashFlow || [])[(db.CashFlow || []).length - 1];
+  const outlook = {
+    Deposits: lastYear ? num(lastYear.deposits) + num(lastYear.added_deposits) : 0,
+    Invested: sum(db.CashFlow, 'to_be_invested'),
+  };
+  for (const r of db.Horizon || []) {
+    if (r.item in outlook) r.value = outlook[r.item];
   }
 
   // --- Balance sheet ------------------------------------------------------
@@ -638,6 +664,9 @@ const AUTH_KEY = 'personal-finance:authed';
 // Which published file the stored copy was taken from.
 const BASELINE_KEY = 'personal-finance:baseline';
 const PASSWORD = '9987';
+const RATE_API = 'https://open.er-api.com/v6/latest/';
+// Signed out after this long without a click, a key or a scroll.
+const IDLE_LIMIT = 7 * 60 * 1000;
 
 // app.js overrides window.fetch below, so keep the real one for our own calls.
 const realFetch = window.fetch.bind(window);
@@ -646,6 +675,26 @@ let db = null;
 let rates = null;
 let authed = sessionStorage.getItem(AUTH_KEY) === '1';
 
+let idleTimer = null;
+
+function signOut() {
+  authed = false;
+  clearTimeout(idleTimer);
+  sessionStorage.removeItem(AUTH_KEY);
+  if (typeof showLogin === 'function') showLogin();
+}
+
+/** Any sign of life restarts the clock; silence for IDLE_LIMIT ends it. */
+function noteActivity() {
+  if (!authed) return;
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(signOut, IDLE_LIMIT);
+}
+
+for (const event of ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll']) {
+  window.addEventListener(event, noteActivity, { passive: true, capture: true });
+}
+
 class ApiError extends Error {
   constructor(status, message) {
     super(message);
@@ -653,9 +702,40 @@ class ApiError extends Error {
   }
 }
 
-/** Rates published by the scheduled workflow, if the fetch has ever run. */
+async function rateToEgp(base) {
+  const res = await realFetch(`${RATE_API}${base}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+  const body = await res.json();
+  const rate = body.rates && body.rates.EGP;
+  // The same guard the scheduled fetch applies: a wrong rate would quietly
+  // rewrite every foreign holding.
+  if (!Number.isFinite(rate) || rate < 5 || rate > 500) throw new Error('implausible rate');
+  return { rate: Number(rate.toFixed(4)), updated: body.time_last_update_utc };
+}
+
+/**
+ * Read straight from the source on every load, so the figures are current
+ * rather than whatever the last scheduled run committed. The repo's
+ * rates.json is the fallback for being offline or the source being down.
+ */
 async function loadRates() {
   if (rates !== null) return rates;
+
+  try {
+    const [usd, eur] = await Promise.all([rateToEgp('USD'), rateToEgp('EUR')]);
+    rates = {
+      usd: usd.rate,
+      eur: eur.rate,
+      source: 'open.er-api.com',
+      sourceUpdated: usd.updated,
+      fetched: new Date().toISOString(),
+    };
+    return rates;
+  } catch {
+    // Fall through to the published copy.
+  }
+
   try {
     const res = await realFetch(new URL('rates.json', document.baseURI).href, { cache: 'no-store' });
     rates = res.ok ? await res.json() : false;
@@ -765,11 +845,13 @@ const routes = [
     if (String(body.password ?? '') !== PASSWORD) throw new ApiError(401, 'Wrong password.');
     authed = true;
     sessionStorage.setItem(AUTH_KEY, '1');
+    noteActivity();
     return { ok: true };
   }],
 
   ['POST', /^\/api\/logout$/, () => {
     authed = false;
+    clearTimeout(idleTimer);
     sessionStorage.removeItem(AUTH_KEY);
     return { ok: true };
   }],
@@ -1013,6 +1095,7 @@ $id('download').addEventListener('click', async () => {
 
 renderSyncButton();
 setStatus(token ? 'Connected' : 'Not connected');
+noteActivity();
 
 // Edits live in this browser until they are saved, so leaving with some
 // still pending is worth a word.
