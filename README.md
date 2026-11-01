@@ -126,7 +126,11 @@ node scripts/verify.js
 ```
 
 Reconciles 19 headline figures — totals, equity, profit, deposits, expenses —
-against the values the original workbook had. All 19 match as imported.
+against the values the original workbook had. All 19 matched on import.
+
+It checks the *original* figures, so it is an import-time reconciliation and
+not an ongoing invariant: once you edit something, the figures you changed
+report as mismatches, and that is the script doing its job.
 
 ### Rebuilding the Pages copy
 
@@ -149,9 +153,6 @@ npm run pull:pages
 
 which rebuilds the encrypted local database from the published workbook
 (keeping a backup first), or discard them with `npm run build:pages -- --force`.
-
-Reconciles 19 headline figures — totals, equity, profit, deposits, expenses —
-against the values the original workbook had. All 19 match as imported.
 
 ## What is calculated, and from what
 
