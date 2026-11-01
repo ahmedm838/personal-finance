@@ -154,6 +154,11 @@ npm run pull:pages
 which rebuilds the encrypted local database from the published workbook
 (keeping a backup first), or discard them with `npm run build:pages -- --force`.
 
+The guard compares the two files and cannot tell which is newer, so it also
+fires after you edit `data/finance.xlsx` locally — through `npm start`, say.
+There, `--force` is the right answer: pull first if the live site also moved,
+then force the rebuild to publish your local change.
+
 ## What is calculated, and from what
 
 | Figure | Derived from |
@@ -163,6 +168,7 @@ which rebuilds the encrypted local database from the published workbook
 | Entry amount, foreign currency | FX amount × the published rate (Settings as fallback) |
 | Entry amount, EGP deposits | `DepositsEGP` total |
 | Entry amount, USD deposits | `DepositsUSD` total × USD rate |
+| Entry amount, furniture | `Furniture` total |
 | Deposit monthly interest | Amount × rate ÷ 12 |
 | Expenses → Yearly Fees | `AnnualFees` total ÷ 12, floored to 100 |
 | Expenses → Bills | `Bills` total, rounded up to 500 |
@@ -172,6 +178,10 @@ which rebuilds the encrypted local database from the published workbook
 | Furniture amount | Count × price |
 | Cash flow earnings / saving | Interest + salary + other income; − expenses |
 | 2014–2026 change | (2026 − 2014) ÷ 2014 |
+
+The Furniture line on the balance sheet follows the Furniture tab, so adding
+an item there moves your assets. Deposits work the same way. Everything else
+on that tab is a figure you type.
 
 The "Linked to" column on the Assets & Liabilities and Expenses tabs is what
 drives the rows that pull from another table. Set it to *none* to type a figure

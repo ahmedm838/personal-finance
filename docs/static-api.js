@@ -61,6 +61,7 @@ const tables = {
           { value: '', label: '— none —' },
           { value: 'deposits_egp', label: 'EGP deposits total' },
           { value: 'deposits_usd', label: 'USD deposits total' },
+          { value: 'furniture', label: 'Furniture total' },
         ],
       },
       { key: 'remarks', label: 'Remarks', type: 'text' },
@@ -430,10 +431,16 @@ function compute(db, rates) {
   const egpDeposits = sum(db.DepositsEGP, 'amount');
   const usdDeposits = sum(db.DepositsUSD, 'amount');
 
+  // --- Furniture ----------------------------------------------------------
+  // Totalled before the ledger, because a ledger entry can now link to it.
+  for (const r of db.Furniture || []) r.amount = num(r.count) * num(r.price);
+  const furnitureTotal = sum(db.Furniture, 'amount');
+
   // --- Ledger entries -----------------------------------------------------
   for (const r of db.Entries || []) {
     if (r.link === 'deposits_egp') r.amount = egpDeposits;
     else if (r.link === 'deposits_usd') r.amount = usdDeposits * usdRate;
+    else if (r.link === 'furniture') r.amount = furnitureTotal;
     else if (r.currency === 'USD') r.amount = num(r.fx_amount) * usdRate;
     else if (r.currency === 'EUR') r.amount = num(r.fx_amount) * eurRate;
     // EGP rows keep their typed amount.
@@ -457,7 +464,6 @@ function compute(db, rates) {
   }
 
   // --- Simple per-row derivations ----------------------------------------
-  for (const r of db.Furniture || []) r.amount = num(r.count) * num(r.price);
 
   for (const r of db.Macro || []) {
     const a = num(r.y2014);
@@ -517,6 +523,7 @@ function compute(db, rates) {
     derived: {
       egpDeposits,
       usdDeposits,
+      furnitureTotal,
       usdDepositsEgp: usdDeposits * usdRate,
       kmPerMonth,
       fuelCost,
