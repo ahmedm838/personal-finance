@@ -388,7 +388,7 @@ function renderBalance() {
   frag.append(el('p', {
     className: 'hint',
     textContent: d.rateIsLive
-      ? `USD and EUR holdings are valued at these rates, from ${d.rateSource}, fetched ${new Date(d.rateFetched).toLocaleString()}.`
+      ? `USD and EUR holdings are valued at these rates, from ${d.rateSource}, as of ${new Date(d.rateFetched).toLocaleString()}.`
       : 'No published rates found — foreign holdings cannot be valued. Run the rate fetch.',
   }));
 

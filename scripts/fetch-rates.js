@@ -49,6 +49,15 @@ async function main() {
     fetched: new Date().toISOString(),
   };
 
+  // fetched moves on every run, so comparing whole files would commit every
+  // weekday whether or not a rate moved. Only the figures decide.
+  let current = null;
+  try { current = JSON.parse(fs.readFileSync(OUT, 'utf8')); } catch { /* first run */ }
+  if (current && current.usd === payload.usd && current.eur === payload.eur) {
+    console.log(`\n  USD/EGP ${payload.usd}    EUR/EGP ${payload.eur}    unchanged\n`);
+    return;
+  }
+
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, `${JSON.stringify(payload, null, 2)}\n`);
   console.log(`\n  USD/EGP ${payload.usd}    EUR/EGP ${payload.eur}    (${SOURCE})\n`);
