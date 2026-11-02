@@ -804,9 +804,21 @@ async function loadDb() {
   }
 
   const published = bytes ? await digest(bytes) : null;
+  let fromFile = null;
+  if (bytes) {
+    const wb = XLSX.read(bytes, { type: 'array', cellDates: false });
+    fromFile = {};
+    for (const [name, def] of Object.entries(tables)) {
+      fromFile[name] = sheetToRows(wb.Sheets[name], def);
+    }
+  }
+
   if (saved && (!published || localStorage.getItem(BASELINE_KEY) === published)) {
     try {
       db = JSON.parse(saved);
+      // The stored copy may already hold edits, so what counts as saved is
+      // the published file, not what this browser happens to be holding.
+      savedDb = fromFile ? JSON.parse(JSON.stringify(fromFile)) : JSON.parse(saved);
       return db;
     } catch {
       localStorage.removeItem(STORE_KEY);
@@ -815,11 +827,8 @@ async function loadDb() {
     if (typeof toast === 'function') toast('Loaded newer figures from the repo');
   }
 
-  const wb = XLSX.read(bytes, { type: 'array', cellDates: false });
-  db = {};
-  for (const [name, def] of Object.entries(tables)) {
-    db[name] = sheetToRows(wb.Sheets[name], def);
-  }
+  db = fromFile;
+  markSaved();
   localStorage.removeItem(STORE_KEY);
   localStorage.setItem(BASELINE_KEY, published);
   return db;
@@ -831,9 +840,38 @@ function persist() {
   } catch {
     // A full or disabled store only costs us persistence, not the session.
   }
-  unsaved += 1;
-  setStatus(`${unsaved} unsaved`);
+  const n = changedRows();
+  setStatus(n ? `${n} unsaved` : (token ? 'Connected' : 'Not connected'));
 }
+
+/** Only the stored columns matter: the computed ones are never written. */
+function storedShape(name, row) {
+  const out = {};
+  for (const col of tables[name].columns) if (!col.computed) out[col.key] = row[col.key] ?? null;
+  return JSON.stringify(out);
+}
+
+/**
+ * How many rows differ from the published workbook — added, removed or
+ * edited. Counting keystrokes made three corrections to one figure look
+ * like three changes.
+ */
+function changedRows() {
+  if (!savedDb || !db) return 0;
+
+  let n = 0;
+  for (const name of Object.keys(tables)) {
+    const now = db[name] || [];
+    const was = savedDb[name] || [];
+    n += Math.abs(now.length - was.length);
+    for (let i = 0; i < Math.min(now.length, was.length); i += 1) {
+      if (storedShape(name, now[i]) !== storedShape(name, was[i])) n += 1;
+    }
+  }
+  return n;
+}
+
+const markSaved = () => { savedDb = JSON.parse(JSON.stringify(db)); };
 
 function workbook() {
   const wb = XLSX.utils.book_new();
@@ -850,7 +888,7 @@ function payload() {
   for (const name of Object.keys(tables)) {
     data[name] = { rows: db[name] || [], totals: tableTotals(name, db[name] || []) };
   }
-  return { tabs, schema: tables, data, balance, derived, save: 'manual', unsaved };
+  return { tabs, schema: tables, data, balance, derived, save: 'manual', unsaved: changedRows() };
 }
 
 function requireAuth() {
@@ -886,6 +924,21 @@ const routes = [
     clearTimeout(idleTimer);
     sessionStorage.removeItem(AUTH_KEY);
     return { ok: true };
+  }],
+
+  ['POST', /^\/api\/discard$/, async () => {
+    requireAuth();
+    await loadDb();
+    if (!savedDb) throw new ApiError(400, 'Nothing to discard.');
+
+    db = JSON.parse(JSON.stringify(savedDb));
+    try {
+      localStorage.removeItem(STORE_KEY);
+    } catch {
+      // Nothing to clear is not a failure.
+    }
+    setStatus(token ? 'Connected' : 'Not connected');
+    return payload();
   }],
 
   ['POST', /^\/api\/save$/, async () => {
@@ -975,9 +1028,9 @@ window.fetch = async (input, init = {}) => {
  */
 
 const TOKEN_KEY = 'personal-finance:token';
-// Edits are kept here until the Save button sends them; the count is what
-// the buttons in each section are enabled by.
-let unsaved = 0;
+// The rows as the published workbook holds them. Everything the buttons
+// report, and what Discard goes back to, is measured against this.
+let savedDb = null;
 
 let token = localStorage.getItem(TOKEN_KEY) || '';
 let fileSha = null;
@@ -1064,7 +1117,7 @@ async function push() {
     fileSha = res.content.sha;
     // What we just pushed is now the published file.
     localStorage.setItem(BASELINE_KEY, await digest(bytes));
-    unsaved = 0;
+    markSaved();
     setStatus(`Saved ${new Date().toLocaleTimeString()}`);
   } catch (e) {
     if (e.status === 401) {
@@ -1095,7 +1148,7 @@ async function connect() {
   try {
     await currentSha();
     localStorage.setItem(TOKEN_KEY, token);
-    setStatus(unsaved ? `${unsaved} unsaved` : 'Connected');
+    setStatus(changedRows() ? `${changedRows()} unsaved` : 'Connected');
     renderSyncButton();
   } catch (e) {
     token = previous;
@@ -1132,7 +1185,7 @@ noteActivity();
 // Edits live in this browser until they are saved, so leaving with some
 // still pending is worth a word.
 window.addEventListener('beforeunload', (e) => {
-  if (!unsaved) return;
+  if (!changedRows()) return;
   e.preventDefault();
   e.returnValue = '';
 });

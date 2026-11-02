@@ -134,7 +134,12 @@ function cellEditor(col, value, commit) {
   }
   if (col.type === 'date') {
     const input = el('input', { type: 'date', value: value || '' });
-    input.addEventListener('change', () => commit(input.value || null));
+    // Committing on `change` fires the moment the date becomes valid, which
+    // is part way through typing the year. The redraw that follows puts the
+    // caret back on the first segment, so the year can never be finished.
+    const apply = () => { if (input.value !== (value || '')) commit(input.value || null); };
+    input.addEventListener('blur', apply);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
     return input;
   }
   if (numeric(col)) return numberInput(col, value, commit);
@@ -400,6 +405,23 @@ function renderKeyed(name) {
  * database is one workbook, so it saves every pending change, not just this
  * section's — the count says how many are waiting.
  */
+/** Throws away everything since the last save, in every tab. */
+function discardButton() {
+  const n = state.unsaved || 0;
+  const b = el('button', {
+    className: 'btn',
+    type: 'button',
+    textContent: 'Discard',
+    disabled: !n,
+    title: n ? 'Throws away every unsaved change, in every tab.' : 'Nothing to discard.',
+  });
+  b.addEventListener('click', () => {
+    if (!confirm(`Discard ${n} unsaved ${n === 1 ? 'row' : 'rows'}? This cannot be undone.`)) return;
+    mutate('POST', '/api/discard', null, 'Changes discarded');
+  });
+  return b;
+}
+
 function saveButton() {
   const n = state.unsaved || 0;
   const b = el('button', {
@@ -407,7 +429,7 @@ function saveButton() {
     type: 'button',
     textContent: n ? `Save (${n})` : 'Saved',
     disabled: !n,
-    title: n ? 'Writes every unsaved change, in every tab, back to the repo.' : 'Nothing waiting to be saved.',
+    title: n ? `Writes ${n} changed row(s), from every tab, back to the repo.` : 'Nothing waiting to be saved.',
   });
   b.addEventListener('click', () => mutate('POST', '/api/save', null, 'Saved to the repo'));
   return b;
@@ -432,7 +454,7 @@ function renderTablePanel(name) {
     });
     actions.push(add);
   }
-  if (state.save === 'manual') actions.push(saveButton());
+  if (state.save === 'manual') actions.push(discardButton(), saveButton());
 
   return el('section', { className: 'panel' }, [
     head,
