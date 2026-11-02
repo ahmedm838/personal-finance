@@ -68,6 +68,7 @@ const tables = {
       { key: 'remarks', label: 'Remarks', type: 'text' },
       { key: 'amount', label: 'Amount (EGP)', type: 'money', computed: true, width: 150 },
     ],
+    sortable: ['account', 'currency', 'fx_amount', 'amount'],
     filters: true,
   },
 
@@ -107,8 +108,10 @@ const tables = {
     label: 'Monthly Bills',
     columns: [
       { key: 'item', label: 'Bill', type: 'text' },
+      { key: 'remarks', label: 'Remarks', type: 'text', width: 220 },
       { key: 'amount', label: 'Amount', type: 'money' },
     ],
+    sortable: ['amount'],
     totals: { amount: 'sum' },
   },
 
@@ -117,8 +120,11 @@ const tables = {
     columns: [
       { key: 'item', label: 'Fee', type: 'text' },
       { key: 'amount', label: 'Amount', type: 'money' },
+      { key: 'frequency', label: 'Frequency', type: 'int', width: 110, hint: 'Times a year' },
+      { key: 'total_amount', label: 'Total Amount', type: 'money', computed: true, width: 140 },
     ],
-    totals: { amount: 'sum' },
+    sortable: ['amount', 'total_amount'],
+    totals: { amount: 'sum', total_amount: 'sum' },
   },
 
   DepositsEGP: {
@@ -563,7 +569,12 @@ function compute(db, rates) {
 
   // --- Expense roll-ups ---------------------------------------------------
   const billsTotal = sum(db.Bills, 'amount');
-  const annualFeesTotal = sum(db.AnnualFees, 'amount');
+  // A fee paid more than once a year costs its amount each time.
+  for (const r of db.AnnualFees || []) {
+    // A blank frequency means once, so a new row counts before it is filled in.
+    r.total_amount = num(r.amount) * (num(r.frequency) || 1);
+  }
+  const annualFeesTotal = sum(db.AnnualFees, 'total_amount');
   for (const r of db.Expenses || []) {
     if (r.link === 'annual_fees') r.amount = floorTo(annualFeesTotal / 12, 100);
     else if (r.link === 'bills') r.amount = ceilTo(billsTotal, 500);
