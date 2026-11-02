@@ -461,7 +461,6 @@ const YUNIS_START_AGE = 3;
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0);
 const sum = (rows, key) => rows.reduce((t, r) => t + num(r[key]), 0);
-const floorTo = (v, step) => Math.floor(v / step) * step;
 const ceilTo = (v, step) => Math.ceil(v / step) * step;
 
 function settingsMap(rows) {
@@ -589,8 +588,8 @@ function compute(db, rates) {
   }
   const annualFeesTotal = sum(db.AnnualFees, 'total_amount');
   for (const r of db.Expenses || []) {
-    if (r.link === 'annual_fees') r.amount = floorTo(annualFeesTotal / 12, 100);
-    else if (r.link === 'bills') r.amount = ceilTo(billsTotal, 500);
+    if (r.link === 'annual_fees') r.amount = annualFeesTotal / 12;
+    else if (r.link === 'bills') r.amount = billsTotal;
     else if (r.link === 'fuel') r.amount = ceilTo(fuelCost, 100);
   }
   const expensesTotal = sum(db.Expenses, 'amount');
