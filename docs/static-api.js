@@ -561,7 +561,8 @@ function compute(db, rates) {
   let previousLine = null;
   for (const r of db.YunisProjection || []) {
     if (previousLine) {
-      r.age = num(previousLine.age) + num(r.tenor);
+      // Both step on by the tenor of the line above, so they stay in step.
+      r.age = num(previousLine.age) + num(previousLine.tenor);
       r.date = addYears(previousLine.date, previousLine.tenor) || previousLine.date;
       r.usd_value = num(previousLine.usd_value)
         + num(previousLine.saving_tenor)
