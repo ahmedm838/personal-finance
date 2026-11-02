@@ -218,10 +218,9 @@ const tables = {
     label: 'Savings Projection',
     columns: [
       { key: 'tenor', label: 'Tenor', type: 'int', width: 80 },
-      // The first age is given; each one after follows the tenor above it.
+      // Both start from a fixed point and then follow the tenor of the line
+      // above, so neither is ever typed in.
       { key: 'age', label: 'Age', type: 'int', width: 80, derived: true },
-      // The first date is given; each one after is the date above it plus
-      // the tenor of that line above.
       { key: 'date', label: 'Date', type: 'date', width: 140, derived: true },
       { key: 'usd_value', label: 'USD Value', type: 'money', computed: true, whole: true, width: 120 },
       { key: 'int_rate', label: 'INT. Rate', type: 'percent', fixedPercent: 2, width: 100 },
@@ -420,6 +419,12 @@ function sanitise(def, input, base = {}) {
 // Tracking began here. It is a fact about the past, not something to set.
 const TRACKING_START = '2019-04-01';
 
+// Where Yunis's plan starts: the opening deposit, and the date and age of
+// the first line. Every line after these follows from the tenors.
+const YUNIS_DEPOSIT = 7000;
+const YUNIS_START_DATE = '2024-01-01';
+const YUNIS_START_AGE = 3;
+
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0);
 const sum = (rows, key) => rows.reduce((t, r) => t + num(r[key]), 0);
 const floorTo = (v, step) => Math.floor(v / step) * step;
@@ -555,8 +560,8 @@ function compute(db, rates) {
   }
 
   // --- Yunis's saving plan ------------------------------------------------
-  // Each line starts from the one above it: the age moves on by that line's
-  // tenor, and the balance by what the line above saved and earned.
+  // The first line is fixed; each one after starts from the line above it,
+  // moving on by that line's tenor and by what it saved and earned.
   const plan = settingsMap(db.YunisParams);
   let previousLine = null;
   for (const r of db.YunisProjection || []) {
@@ -568,7 +573,9 @@ function compute(db, rates) {
         + num(previousLine.saving_tenor)
         + num(previousLine.interest_tenor);
     } else {
-      r.usd_value = plan.deposit || 0;
+      r.age = YUNIS_START_AGE;
+      r.date = YUNIS_START_DATE;
+      r.usd_value = YUNIS_DEPOSIT;
     }
 
     r.monthly_interest = (num(r.usd_value) * num(r.int_rate)) / 12;

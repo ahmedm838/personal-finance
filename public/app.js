@@ -168,7 +168,8 @@ function isDerivedHere(tableName, col, row, index) {
   if (tableName === 'Expenses' && col.key === 'amount') return Boolean(row.link);
   // The first year is the base the rest of the projection grows from.
   if (tableName === 'CashFlow' && (col.key === 'expenses' || col.key === 'deposits')) return index > 0;
-  if (tableName === 'YunisProjection' && (col.key === 'age' || col.key === 'date')) return index > 0;
+  // The plan opens on a fixed date and age, so not even the first line is typed.
+  if (tableName === 'YunisProjection' && (col.key === 'age' || col.key === 'date')) return true;
   if (tableName === 'Horizon' && col.key === 'value') return row.item === 'Deposits' || row.item === 'Invested';
   return false;
 }
