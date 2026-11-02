@@ -437,3 +437,10 @@ th .sort:hover { color: var(--accent); }
   align-items: center;
   gap: 12px;
 }
+
+/* A worked-out value in a keyed field sits where its input would. */
+.field .ro.calc {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+}

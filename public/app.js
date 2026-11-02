@@ -164,6 +164,7 @@ function isDerivedHere(tableName, col, row, index) {
   if (tableName === 'Expenses' && col.key === 'amount') return Boolean(row.link);
   // The first year is the base the rest of the projection grows from.
   if (tableName === 'CashFlow' && (col.key === 'expenses' || col.key === 'deposits')) return index > 0;
+  if (tableName === 'YunisProjection' && col.key === 'age') return index > 0;
   if (tableName === 'Horizon' && col.key === 'value') return row.item === 'Deposits' || row.item === 'Invested';
   return false;
 }
@@ -381,20 +382,31 @@ function renderKeyed(name) {
   const { rows } = state.data[name];
   const valueCol = def.columns.find((c) => !c.readOnly);
 
+  const worked = new Set(def.derivedKeys || []);
+
   const wrap = el('div', { className: 'fields' });
   rows.forEach((row, i) => {
-    const input = el('input', { type: 'text', value: row[valueCol.key] ?? '' });
-    input.dataset.cell = `${name}:${i}:${valueCol.key}`;
-    const commit = () => {
-      if (input.value === (row[valueCol.key] ?? '')) return;
-      mutate('PATCH', `/api/${name}/rows/${i}`, { [valueCol.key]: input.value });
-    };
-    input.addEventListener('blur', commit);
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+    let control;
+    if (worked.has(row.key)) {
+      const text = (def.wholeKeys || []).includes(row.key)
+        ? whole(row[valueCol.key])
+        : display(valueCol, row[valueCol.key]);
+      control = el('span', { className: 'ro calc', textContent: text, title: 'Calculated' });
+    } else {
+      const input = el('input', { type: 'text', value: row[valueCol.key] ?? '' });
+      input.dataset.cell = `${name}:${i}:${valueCol.key}`;
+      const commit = () => {
+        if (input.value === (row[valueCol.key] ?? '')) return;
+        mutate('PATCH', `/api/${name}/rows/${i}`, { [valueCol.key]: input.value });
+      };
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+      control = input;
+    }
 
     wrap.append(el('div', { className: 'field' }, [
       el('label', { textContent: row.label || row.key }),
-      el('div', { className: 'row' }, [input, el('span', { className: 'unit', textContent: row.unit || '' })]),
+      el('div', { className: 'row' }, [control, el('span', { className: 'unit', textContent: row.unit || '' })]),
     ]));
   });
   return wrap;

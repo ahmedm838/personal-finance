@@ -238,6 +238,13 @@ then force the rebuild to publish your local change.
 | Cash flow spending | Yearly saving − added deposits − to be invested |
 | Outlook deposits | Last projected year's deposits + its added deposits |
 | Outlook invested | Every year's "to be invested", added up |
+| Yunis age | The age above it plus that line's tenor |
+| Yunis USD value | The line above, plus what it saved and earned over its tenor |
+| Yunis monthly / yearly interest | USD value × rate, over twelve months or one year |
+| Yunis interest / tenor | USD value × rate × tenor |
+| Yunis years | The tenor column, added up |
+| Yunis expected rate | Balance sheet USD rate, devalued annually over those years |
+| Yunis maturity | The last line at its close, in USD and at the expected rate in EGP |
 | Driving KM / Year | Times per year × km each time |
 | Expense share % | Amount ÷ expenses total |
 | Furniture amount | Count × price |

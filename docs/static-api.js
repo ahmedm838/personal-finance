@@ -198,6 +198,10 @@ const tables = {
   YunisParams: {
     label: 'Plan Parameters',
     keyed: true,
+    // Worked out from the projection; the rest are typed in.
+    derivedKeys: ['years', 'current_ex_rate', 'expected_ex_rate', 'maturity_value_usd', 'maturity_value_egp'],
+    // Sums of money, shown to the pound rather than three decimals.
+    wholeKeys: ['maturity_value_usd', 'maturity_value_egp'],
     columns: [
       { key: 'key', label: 'Key', type: 'text', readOnly: true },
       { key: 'label', label: 'Parameter', type: 'text', readOnly: true },
@@ -208,14 +212,20 @@ const tables = {
 
   YunisProjection: {
     label: 'Savings Projection',
+    centreHeadings: true,
     columns: [
-      { key: 'years', label: 'Years', type: 'int', width: 70 },
-      { key: 'age', label: 'Age', type: 'int', width: 70 },
-      { key: 'date', label: 'Date', type: 'date' },
-      { key: 'usd_value', label: 'USD Value', type: 'money' },
-      { key: 'yearly_interest', label: 'Yearly Interest', type: 'money' },
-      { key: 'saving_tenor', label: 'Saving / Tenor', type: 'money' },
+      { key: 'tenor', label: 'Tenor', type: 'int', width: 80 },
+      // The first age is given; each one after follows the tenor above it.
+      { key: 'age', label: 'Age', type: 'int', width: 80, derived: true },
+      { key: 'date', label: 'Date', type: 'date', width: 140 },
+      { key: 'usd_value', label: 'USD Value', type: 'money', computed: true, width: 120 },
+      { key: 'int_rate', label: 'INT. Rate', type: 'percent', width: 100 },
+      { key: 'monthly_interest', label: 'Monthly Interest', type: 'money', computed: true, width: 140 },
+      { key: 'yearly_interest', label: 'Yearly Interest', type: 'money', computed: true, width: 130 },
+      { key: 'interest_tenor', label: 'Interest / Tenor', type: 'money', computed: true, width: 140 },
+      { key: 'saving_tenor', label: 'Saving / Tenor', type: 'money', width: 130 },
     ],
+    totals: { tenor: 'sum' },
   },
 
   Debts: {
@@ -537,6 +547,45 @@ function compute(db, rates) {
   const expensesTotal = sum(db.Expenses, 'amount');
   for (const r of db.Expenses || []) {
     r.share = expensesTotal ? num(r.amount) / expensesTotal : 0;
+  }
+
+  // --- Yunis's saving plan ------------------------------------------------
+  // Each line starts from the one above it: the age moves on by that line's
+  // tenor, and the balance by what the line above saved and earned.
+  const plan = settingsMap(db.YunisParams);
+  let previousLine = null;
+  for (const r of db.YunisProjection || []) {
+    if (previousLine) {
+      r.age = num(previousLine.age) + num(r.tenor);
+      r.usd_value = num(previousLine.usd_value)
+        + num(previousLine.saving_tenor)
+        + num(previousLine.interest_tenor);
+    } else {
+      r.usd_value = plan.deposit || 0;
+    }
+
+    r.monthly_interest = (num(r.usd_value) * num(r.int_rate)) / 12;
+    r.yearly_interest = num(r.usd_value) * num(r.int_rate);
+    r.interest_tenor = num(r.usd_value) * num(r.int_rate) * num(r.tenor);
+    previousLine = r;
+  }
+
+  const planYears = sum(db.YunisProjection, 'tenor');
+  const expectedRate = usdRate * (1 + (plan.annual_devaluation_rate || 0)) ** planYears;
+  const lastLine = (db.YunisProjection || [])[(db.YunisProjection || []).length - 1];
+  const maturityUsd = lastLine
+    ? num(lastLine.usd_value) + num(lastLine.interest_tenor) + num(lastLine.saving_tenor)
+    : 0;
+
+  const planResults = {
+    years: planYears,
+    current_ex_rate: usdRate,
+    expected_ex_rate: expectedRate,
+    maturity_value_usd: maturityUsd,
+    maturity_value_egp: maturityUsd * expectedRate,
+  };
+  for (const r of db.YunisParams || []) {
+    if (r.key in planResults) r.value = planResults[r.key];
   }
 
   // --- Simple per-row derivations ----------------------------------------
