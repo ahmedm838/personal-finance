@@ -31,7 +31,11 @@ const fmt = {
   text: (v) => (v === null || v === undefined ? '' : String(v)),
 };
 
-const display = (col, v) => (col.whole ? whole(v) : (fmt[col.type] || fmt.text)(v));
+const display = (col, v) => {
+  if (col.whole) return whole(v);
+  if (col.fixedPercent !== undefined) return isNum(v) ? `${(v * 100).toFixed(col.fixedPercent)}%` : '';
+  return (fmt[col.type] || fmt.text)(v);
+};
 const whole = (v) => (isNum(v) ? Math.round(v).toLocaleString('en-US') : '');
 const wholePercent = (v) => (isNum(v) ? `${Math.round(v * 100).toLocaleString('en-US')}%` : '');
 
@@ -164,7 +168,7 @@ function isDerivedHere(tableName, col, row, index) {
   if (tableName === 'Expenses' && col.key === 'amount') return Boolean(row.link);
   // The first year is the base the rest of the projection grows from.
   if (tableName === 'CashFlow' && (col.key === 'expenses' || col.key === 'deposits')) return index > 0;
-  if (tableName === 'YunisProjection' && col.key === 'age') return index > 0;
+  if (tableName === 'YunisProjection' && (col.key === 'age' || col.key === 'date')) return index > 0;
   if (tableName === 'Horizon' && col.key === 'value') return row.item === 'Deposits' || row.item === 'Invested';
   return false;
 }
@@ -383,21 +387,35 @@ function renderKeyed(name) {
   const valueCol = def.columns.find((c) => !c.readOnly);
 
   const worked = new Set(def.derivedKeys || []);
+  const formats = def.formatKeys || {};
+
+  const written = (key, v) => {
+    if (formats[key] === 'percent') return isNum(v) ? `${(v * 100).toFixed(2)}%` : '';
+    if (formats[key] === 'fixed3') return isNum(v) ? v.toFixed(3) : '';
+    if (formats[key] === 'whole') return whole(v);
+    return display(valueCol, v);
+  };
 
   const wrap = el('div', { className: 'fields' });
   rows.forEach((row, i) => {
     let control;
     if (worked.has(row.key)) {
-      const text = (def.wholeKeys || []).includes(row.key)
-        ? whole(row[valueCol.key])
-        : display(valueCol, row[valueCol.key]);
-      control = el('span', { className: 'ro calc', textContent: text, title: 'Calculated' });
+      control = el('span', { className: 'ro calc', textContent: written(row.key, row[valueCol.key]), title: 'Calculated' });
     } else {
-      const input = el('input', { type: 'text', value: row[valueCol.key] ?? '' });
+      const asPercent = formats[row.key] === 'percent';
+      const shown = asPercent
+        // 0.07 * 100 is 7.000000000000001 in binary floating point; the box
+        // should read 7.
+        ? (isNum(row[valueCol.key]) ? String(Number((row[valueCol.key] * 100).toFixed(6))) : '')
+        : (row[valueCol.key] ?? '');
+
+      const input = el('input', { type: 'text', value: shown });
       input.dataset.cell = `${name}:${i}:${valueCol.key}`;
       const commit = () => {
-        if (input.value === (row[valueCol.key] ?? '')) return;
-        mutate('PATCH', `/api/${name}/rows/${i}`, { [valueCol.key]: input.value });
+        if (input.value === String(shown)) return;
+        const typed = input.value.trim().replace('%', '');
+        const next = asPercent ? Number(typed) / 100 : input.value;
+        mutate('PATCH', `/api/${name}/rows/${i}`, { [valueCol.key]: next });
       };
       input.addEventListener('blur', commit);
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
