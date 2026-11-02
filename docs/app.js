@@ -392,9 +392,17 @@ function renderGrid(name) {
     const col = def.columns.find((c) => c.key === order.key);
     const sign = order.dir === 'desc' ? -1 : 1;
     const value = sortValue(col);
-    entries.sort((a, b) => sign * (numeric(col) && !col.sortBy
-      ? (Number(value(a.row)) || 0) - (Number(value(b.row)) || 0)
-      : String(value(a.row) ?? '').localeCompare(String(value(b.row) ?? ''))));
+    const tieCol = col.thenBy && def.columns.find((c) => c.key === col.thenBy);
+    const tie = tieCol ? sortValue(tieCol) : null;
+
+    entries.sort((a, b) => {
+      const first = numeric(col) && !col.sortBy
+        ? (Number(value(a.row)) || 0) - (Number(value(b.row)) || 0)
+        : String(value(a.row) ?? '').localeCompare(String(value(b.row) ?? ''));
+      if (first) return sign * first;
+      // Rows that tie read A-Z, whichever way the column itself is sorted.
+      return tie ? String(tie(a.row) ?? '').localeCompare(String(tie(b.row) ?? '')) : 0;
+    });
   }
   const visibleRows = entries.map((e) => e.row);
 

@@ -57,6 +57,8 @@ const tables = {
         type: 'select',
         optionsFrom: 'Accounts.level3',
         sortBy: { table: 'Accounts', on: 'level3', take: 'code3' },
+        // Rows under one account read alphabetically.
+        thenBy: 'item',
       },
       { key: 'item', label: 'Item Description', type: 'text', width: 280 },
       { key: 'currency', label: 'Ccy', type: 'select', options: ['EGP', 'USD', 'EUR'], width: 76 },
@@ -351,16 +353,6 @@ const tables = {
  * The grouping intentionally follows the original Balance Sheet rather than the
  * chart of accounts — deposits and investments are presented as current assets.
  */
-const balanceSheet = {
-  assets: [
-    { section: 'Current Assets', lines: ['Cash', 'A/R', 'EGP Deposits', 'USD Deposits', 'Investments'] },
-    { section: 'Non-current Assets', lines: ['Properties', 'Vehicles', 'Devices'] },
-  ],
-  liabilities: [
-    { section: 'Current Liabilities', lines: ['Credit Cards', 'A/P'] },
-    { section: 'Non-current Liabilities', lines: [{ account: 'Loans', label: 'Debts' }, 'Installments'] },
-  ],
-};
 
 /** Page tabs. The first one is the landing page. */
 const tabs = [
@@ -718,18 +710,36 @@ function compute(db, rates) {
     byAccount[r.account] = (byAccount[r.account] || 0) + num(r.amount);
   }
 
-  // A line is either an account name, or { account, label } when the balance
-  // sheet calls it something other than the chart of accounts does.
-  const buildSide = (groups) => groups.map((g) => {
-    const lines = g.lines.map((line) => {
-      const account = typeof line === 'string' ? line : line.account;
-      return { label: typeof line === 'string' ? line : line.label || account, amount: byAccount[account] || 0 };
-    });
-    return { section: g.section, total: lines.reduce((t, l) => t + l.amount, 0), lines };
-  });
+  // The balance sheet is the chart of accounts with the ledger against it:
+  // a group per level-2 heading, the accounts in code order. Rename, move
+  // or add an account in the chart and it shows up here on its own.
+  const chart = [...(db.Accounts || [])]
+    .sort((a, b) => String(a.code3 ?? '').localeCompare(String(b.code3 ?? '')));
 
-  const assets = buildSide(balanceSheet.assets);
-  const liabilities = buildSide(balanceSheet.liabilities);
+  const buildSide = (side) => {
+    const groups = [];
+    for (const a of chart.filter((r) => r.level1 === side && r.level3)) {
+      const section = [a.level2, a.level1].filter(Boolean).join(' ');
+      let g = groups.find((x) => x.section === section);
+      if (!g) groups.push((g = { section, total: 0, lines: [] }));
+      g.lines.push({ label: a.level3, amount: byAccount[a.level3] || 0 });
+    }
+    for (const g of groups) g.total = g.lines.reduce((t, l) => t + l.amount, 0);
+    return groups;
+  };
+
+  const assets = buildSide('Assets');
+  const liabilities = buildSide('Liabilities');
+
+  // An entry filed under an account the chart does not list would other-
+  // wise vanish from here while still counting in the ledger total.
+  const filed = new Set(chart.map((r) => r.level3));
+  const stray = Object.keys(byAccount)
+    .filter((name) => name && !filed.has(name))
+    .map((name) => ({ label: name, amount: byAccount[name] }));
+  if (stray.length) {
+    assets.push({ section: 'Not in the chart of accounts', total: stray.reduce((t, l) => t + l.amount, 0), lines: stray });
+  }
   const assetsTotal = assets.reduce((t, g) => t + g.total, 0);
   const liabilitiesTotal = liabilities.reduce((t, g) => t + g.total, 0);
   const capitalTotal = sum(db.Capital, 'amount');
