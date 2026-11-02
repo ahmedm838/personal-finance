@@ -4,6 +4,7 @@ let state = null;
 let activeTab = null;
 const filters = {};
 const sorts = {};
+const quick = {};
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, props = {}, kids = []) => {
@@ -243,6 +244,61 @@ function totalsFor(def, rows) {
   return out;
 }
 
+/**
+ * Which values of the matched column still count, given what is picked in
+ * the quick filters. Null means nothing is picked, so everything counts.
+ */
+function quickScope(def, chosen) {
+  const qf = def.quickFilters;
+  if (!qf) return null;
+  const picked = qf.levels.filter((l) => chosen[l.key]);
+  if (!picked.length) return null;
+
+  const rows = (state.data[qf.table] || { rows: [] }).rows;
+  const under = rows.filter((r) => picked.every((l) => r[l.key] === chosen[l.key]));
+  return new Set(under.map((r) => r[qf.key]));
+}
+
+/** Dropdowns above the table, one per level, each narrowing the next. */
+function quickFilterBar(name, def) {
+  const qf = def.quickFilters;
+  const chosen = quick[name] || {};
+  const rows = (state.data[qf.table] || { rows: [] }).rows;
+
+  const bar = el('div', { className: 'quick-filters' });
+  qf.levels.forEach((level, i) => {
+    // Each box offers only what the boxes before it still allow.
+    const above = qf.levels.slice(0, i).filter((l) => chosen[l.key]);
+    const pool = rows.filter((r) => above.every((l) => r[l.key] === chosen[l.key]));
+    const options = [...new Set(pool.map((r) => r[level.key]).filter(Boolean))].sort();
+
+    const select = el('select');
+    select.append(el('option', { value: '', textContent: 'All' }));
+    for (const o of options) select.append(el('option', { value: o, textContent: o }));
+    select.value = chosen[level.key] || '';
+    select.dataset.cell = `${name}:quick:${level.key}`;
+    select.addEventListener('change', () => {
+      const next = { ...chosen, [level.key]: select.value };
+      // A narrower box cannot keep a choice its parent has ruled out.
+      for (const deeper of qf.levels.slice(i + 1)) next[deeper.key] = '';
+      quick[name] = next;
+      render();
+    });
+
+    bar.append(el('label', { className: 'quick' }, [
+      el('span', { textContent: level.label }),
+      select,
+    ]));
+  });
+
+  if (qf.levels.some((l) => chosen[l.key])) {
+    const clear = el('button', { className: 'btn ghost', textContent: 'Clear', type: 'button' });
+    clear.addEventListener('click', () => { delete quick[name]; render(); });
+    bar.append(clear);
+  }
+  return bar;
+}
+
 /** A box under each heading that narrows the rows as you type. */
 function filterRow(name, def) {
   const tr = el('tr', { className: 'filter-row' });
@@ -298,11 +354,15 @@ function renderGrid(name) {
   if (def.filters) thead.append(filterRow(name, def));
 
   const active = filters[name] || {};
-  const filtering = Object.values(active).some((v) => v && v.trim());
-  const shown = (row) => def.columns.every((col) => {
-    const q = (active[col.key] || '').trim().toLowerCase();
-    return !q || String(display(col, row[col.key])).toLowerCase().includes(q);
-  });
+  const scope = quickScope(def, quick[name] || {});
+  const filtering = scope !== null || Object.values(active).some((v) => v && v.trim());
+  const shown = (row) => {
+    if (scope && !scope.has(row[def.quickFilters.on])) return false;
+    return def.columns.every((col) => {
+      const q = (active[col.key] || '').trim().toLowerCase();
+      return !q || String(display(col, row[col.key])).toLowerCase().includes(q);
+    });
+  };
 
   // Rows keep their stored position, because that is what an edit or a
   // delete addresses; only the order they are drawn in changes.
@@ -496,7 +556,9 @@ function renderTablePanel(name) {
 
   return el('section', { className: 'panel' }, [
     head,
-    el('div', { className: def.keyed ? 'panel-body' : '' }, def.keyed ? renderKeyed(name) : renderGrid(name)),
+    el('div', { className: def.keyed ? 'panel-body' : '' }, def.keyed
+      ? renderKeyed(name)
+      : [...(def.quickFilters ? [quickFilterBar(name, def)] : []), renderGrid(name)]),
     ...(actions.length ? [el('div', { className: 'panel-foot' }, actions)] : []),
   ]);
 }

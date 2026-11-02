@@ -70,6 +70,16 @@ const tables = {
     ],
     sortable: ['account', 'currency', 'fx_amount', 'amount'],
     filters: true,
+    quickFilters: {
+      table: 'Accounts',
+      on: 'account',
+      key: 'level3',
+      levels: [
+        { key: 'level1', label: 'Level 1' },
+        { key: 'level2', label: 'Level 2' },
+        { key: 'level3', label: 'Level 3' },
+      ],
+    },
   },
 
   Capital: {
@@ -101,17 +111,19 @@ const tables = {
       { key: 'share', label: '%', type: 'percent', computed: true },
     ],
     sortable: ['amount'],
+    defaultSort: { key: 'amount', dir: 'desc' },
     totals: { amount: 'sum' },
   },
 
   Bills: {
     label: 'Monthly Bills',
     columns: [
-      { key: 'item', label: 'Bill', type: 'text' },
-      { key: 'remarks', label: 'Remarks', type: 'text', width: 220 },
-      { key: 'amount', label: 'Amount', type: 'money' },
+      { key: 'item', label: 'Bill', type: 'text', width: 270 },
+      { key: 'remarks', label: 'Remarks', type: 'text', width: 760 },
+      { key: 'amount', label: 'Amount', type: 'money', width: 270 },
     ],
     sortable: ['amount'],
+    defaultSort: { key: 'amount', dir: 'desc' },
     totals: { amount: 'sum' },
   },
 
@@ -124,6 +136,7 @@ const tables = {
       { key: 'total_amount', label: 'Total Amount', type: 'money', computed: true, width: 140 },
     ],
     sortable: ['amount', 'total_amount'],
+    defaultSort: { key: 'total_amount', dir: 'desc' },
     totals: { amount: 'sum', total_amount: 'sum' },
   },
 

@@ -442,3 +442,36 @@ th .sort:hover { color: var(--accent); }
   padding: 8px 10px;
   border: 1px solid transparent;
 }
+
+/* Narrow a long table down to one branch of the chart of accounts. */
+.quick-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.quick-filters .quick { display: flex; align-items: center; gap: 6px; }
+
+.quick-filters .quick span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.quick-filters select {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  min-width: 130px;
+}
+
+.quick-filters select:focus { outline: none; border-color: var(--accent); }
