@@ -1144,8 +1144,28 @@ const routes = [
   ['POST', /^\/api\/save$/, async () => {
     requireAuth();
     await loadDb();
-    await push();
-    return payload();
+
+    // A write already in flight will not pick up anything typed since, so
+    // those edits stay unsaved and the button stays live.
+    if (saving) return payload();
+
+    // The figures on screen are already the ones being written, and the
+    // round trip to GitHub takes seconds. Hand the table back at once and
+    // let the status line report the write; if it fails, the unsaved count
+    // comes back and the edits are still here.
+    const previously = savedDb;
+    markSaved();
+    const answer = payload();
+
+    // Serialising the workbook holds the thread for a moment, so let the
+    // table paint first and start the write on the next turn of the loop.
+    setTimeout(() => {
+      push()
+        .catch(() => { savedDb = previously; })
+        .finally(() => window.dispatchEvent(new CustomEvent('finance:sync')));
+    }, 0);
+
+    return answer;
   }],
 
   ['GET', /^\/api\/data$/, async () => {

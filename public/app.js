@@ -5,6 +5,9 @@ let activeTab = null;
 const filters = {};
 const sorts = {};
 const quick = {};
+// The order each table was last drawn in, so a row does not move under
+// the cursor while its own edits are still unsaved.
+const held = {};
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, props = {}, kids = []) => {
@@ -70,6 +73,16 @@ async function api(method, url, body) {
 }
 
 /** Every mutation returns the whole payload, so totals stay in step. */
+/** The background repo write finished, so the save count may have moved. */
+window.addEventListener('finance:sync', async () => {
+  try {
+    state = await api('GET', '/api/data');
+    render();
+  } catch {
+    // A failed refresh leaves the screen as it was, which is still right.
+  }
+});
+
 async function mutate(method, url, body, note) {
   try {
     state = await api(method, url, body);
@@ -364,6 +377,8 @@ function renderGrid(name) {
         const next = dir === null ? 'asc' : dir === 'asc' ? 'desc' : null;
         if (next) sorts[name] = { key: c.key, dir: next };
         else delete sorts[name];
+        // Asking for an order is asking for it now, unsaved rows and all.
+        delete held[name];
         render();
       });
       th.append(button);
@@ -388,7 +403,16 @@ function renderGrid(name) {
   // Rows keep their stored position, because that is what an edit or a
   // delete addresses; only the order they are drawn in changes.
   const entries = rows.map((row, i) => ({ row, i })).filter(({ row }) => shown(row));
-  if (order) {
+
+  // Once something is waiting to be saved the table stops reordering, so
+  // naming the account of a new row leaves it where it was typed. A save,
+  // a discard or a click on a heading sorts it afresh.
+  const keeping = state.unsaved > 0 && held[name];
+  if (keeping) {
+    const at = new Map(keeping.map((i, n) => [i, n]));
+    // A row added since is not in the order yet, so it falls to the end.
+    entries.sort((a, b) => (at.has(a.i) ? at.get(a.i) : Infinity) - (at.has(b.i) ? at.get(b.i) : Infinity));
+  } else if (order) {
     const col = def.columns.find((c) => c.key === order.key);
     const sign = order.dir === 'desc' ? -1 : 1;
     const value = sortValue(col);
@@ -404,6 +428,7 @@ function renderGrid(name) {
       return tie ? String(tie(a.row) ?? '').localeCompare(String(tie(b.row) ?? '')) : 0;
     });
   }
+  held[name] = entries.map((e) => e.i);
   const visibleRows = entries.map((e) => e.row);
 
   const tbody = el('tbody');
@@ -438,7 +463,10 @@ function renderGrid(name) {
     const del = el('button', { className: 'icon-btn', textContent: '✕', title: 'Delete row', type: 'button' });
     del.addEventListener('click', () => {
       const label = row[def.columns[0].key] || `row ${i + 1}`;
-      if (confirm(`Delete "${label}"?`)) mutate('DELETE', `/api/${name}/rows/${i}`, null, 'Row deleted');
+      if (!confirm(`Delete "${label}"?`)) return;
+      // Deleting renumbers the rows after it, so the kept order is void.
+      delete held[name];
+      mutate('DELETE', `/api/${name}/rows/${i}`, null, 'Row deleted');
     });
     actions.push(del);
     tr.append(el('td', { className: 'actions-cell' }, actions));
@@ -559,7 +587,9 @@ function saveButton() {
     disabled: !n,
     title: n ? `Writes ${n} changed row(s), from every tab, back to the repo.` : 'Nothing waiting to be saved.',
   });
-  b.addEventListener('click', () => mutate('POST', '/api/save', null, 'Saved to the repo'));
+  // The write to the repo carries on in the background; the status line
+  // beside the header says when it lands, or why it did not.
+  b.addEventListener('click', () => mutate('POST', '/api/save', null, 'Saving to the repo…'));
   return b;
 }
 
