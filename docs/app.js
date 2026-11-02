@@ -170,7 +170,14 @@ function isDerivedHere(tableName, col, row, index) {
   if (tableName === 'CashFlow' && (col.key === 'expenses' || col.key === 'deposits')) return index > 0;
   // The plan opens on a fixed date and age, so not even the first line is typed.
   if (tableName === 'YunisProjection' && (col.key === 'age' || col.key === 'date')) return true;
-  if (tableName === 'Horizon' && col.key === 'value') return row.item === 'Deposits' || row.item === 'Invested';
+  if (tableName === 'Horizon') {
+    const earns = row.item === 'Deposits' || row.item === 'Invested';
+    // Value always comes from the projection. The two lines with capital
+    // behind them earn their income from a rate; the rest are typed in.
+    if (col.key === 'value') return true;
+    if (col.key === 'rate') return !earns;
+    if (col.key === 'income') return earns;
+  }
   return false;
 }
 
@@ -257,7 +264,7 @@ function renderGrid(name) {
   const def = state.schema[name];
   const { rows, totals } = state.data[name];
 
-  const order = sorts[name];
+  const order = sorts[name] || def.defaultSort || null;
   const thead = el('thead', {}, el('tr', {}, [
     ...def.columns.map((c) => {
       const th = el('th', {

@@ -137,6 +137,9 @@ const tables = {
       { key: 'day', label: 'Day', type: 'int', computed: true, width: 70 },
     ],
     countInTotal: true,
+    sortable: ['rate', 'tenor', 'start', 'end', 'amount', 'monthly', 'day'],
+    // The deposit maturing next is the one worth looking at first.
+    defaultSort: { key: 'end', dir: 'asc' },
     totals: { amount: 'sum', monthly: 'sum', rate: 'wavg:amount' },
   },
 
@@ -156,6 +159,9 @@ const tables = {
       { key: 'day', label: 'Day', type: 'int', computed: true, width: 70 },
     ],
     countInTotal: true,
+    sortable: ['rate', 'tenor', 'start', 'end', 'amount', 'monthly', 'day'],
+    // The deposit maturing next is the one worth looking at first.
+    defaultSort: { key: 'end', dir: 'asc' },
     totals: { amount: 'sum', monthly: 'sum', rate: 'wavg:amount' },
   },
 
@@ -179,18 +185,27 @@ const tables = {
       { key: 'dividends_spending', label: 'Dividends', type: 'money', whole: true, width: 100 },
       { key: 'spending', label: 'Spending', type: 'money', computed: true, whole: true, width: 95 },
     ],
+    totals: {
+      yearly_saving: 'sum',
+      added_deposits: 'sum',
+      to_be_invested: 'sum',
+      dividends_spending: 'sum',
+      spending: 'sum',
+    },
   },
 
   Horizon: {
     label: 'Long-term Outlook',
     columns: [
       { key: 'item', label: 'Item', type: 'text', width: 260 },
-      // Deposits and Invested are read off the projection; the rest is typed.
+      // Deposits and Invested are read off the projection and earn at their
+      // own rate; any other line is a monthly figure typed in on its own.
       { key: 'value', label: 'Value', type: 'money', whole: true, derived: true, width: 150 },
-      { key: 'rate', label: 'Rate', type: 'percent', width: 90 },
-      { key: 'income', label: 'Monthly Income', type: 'money', whole: true, width: 150 },
+      { key: 'rate', label: 'Rate', type: 'percent', width: 90, derived: true },
+      { key: 'income', label: 'Monthly Income', type: 'money', whole: true, derived: true, width: 150 },
       { key: 'remarks', label: 'Remarks', type: 'text', width: 200 },
     ],
+    totals: { value: 'sum', income: 'sum' },
   },
 
   YunisParams: {
@@ -643,7 +658,14 @@ function compute(db, rates) {
     Invested: sum(db.CashFlow, 'to_be_invested'),
   };
   for (const r of db.Horizon || []) {
-    if (r.item in outlook) r.value = outlook[r.item];
+    if (r.item in outlook) {
+      r.value = outlook[r.item];
+      r.income = (num(r.value) * num(r.rate)) / 12;
+    } else {
+      // An income line with no capital behind it: the figure is typed in.
+      r.value = null;
+      r.rate = null;
+    }
   }
 
   // --- Balance sheet ------------------------------------------------------
