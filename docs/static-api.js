@@ -69,7 +69,7 @@ const tables = {
           { value: '', label: '— none —' },
           { value: 'deposits_egp', label: 'EGP deposits total' },
           { value: 'deposits_usd', label: 'USD deposits total' },
-          { value: 'furniture', label: 'Furniture total' },
+          { value: 'furniture', label: 'Devices total' },
           { value: 'debts', label: 'Debts total' },
         ],
       },
@@ -321,8 +321,10 @@ const tables = {
     footRows: [{ label: 'Monthly average', derived: 'kmPerMonth', key: 'distance_km', format: 'int' }],
   },
 
+  // Account 123, which the chart of accounts calls Devices. The sheet and
+  // the link value keep their old names so the stored rows still match.
   Furniture: {
-    label: 'Furniture',
+    label: 'Devices',
     columns: [
       { key: 'item', label: 'Item', type: 'text' },
       { key: 'count', label: 'Count', type: 'int', width: 80 },
@@ -352,7 +354,7 @@ const tables = {
 const balanceSheet = {
   assets: [
     { section: 'Current Assets', lines: ['Cash', 'A/R', 'EGP Deposits', 'USD Deposits', 'Investments'] },
-    { section: 'Non-current Assets', lines: ['Properties', 'Vehicles', 'Furniture'] },
+    { section: 'Non-current Assets', lines: ['Properties', 'Vehicles', 'Devices'] },
   ],
   liabilities: [
     { section: 'Current Liabilities', lines: ['Credit Cards', 'A/P'] },
@@ -370,7 +372,7 @@ const tabs = [
   { id: 'yunis-saving', label: "Yunis's Saving", tables: ['YunisParams', 'YunisProjection'] },
   { id: 'debts', label: 'Debts', tables: ['Debts'] },
   { id: 'distances', label: 'Distances', tables: ['DrivingMonthly', 'Distances'] },
-  { id: 'furniture', label: 'Furniture', tables: ['Furniture'] },
+  { id: 'devices', label: 'Devices', tables: ['Furniture'] },
   { id: 'macro', label: '2014-2026', tables: ['Macro'] },
   { id: 'settings', label: 'Settings', tables: ['Settings'] },
 ];
@@ -569,7 +571,7 @@ function compute(db, rates) {
     undated: depositRows.filter((r) => !Number.isFinite(r.day)).length,
   };
 
-  // --- Furniture and debts -------------------------------------------------
+  // --- Devices and debts ---------------------------------------------------
   // Totalled before the ledger, because a ledger entry can link to them.
   for (const r of db.Furniture || []) r.amount = num(r.count) * num(r.price);
   const furnitureTotal = sum(db.Furniture, 'amount');
