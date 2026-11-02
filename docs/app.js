@@ -378,7 +378,7 @@ function renderGrid(name) {
   }
   if (feet.length) parts.push(el('tfoot', {}, feet));
 
-  return el('div', { className: 'grid-wrap' }, el('table', { className: def.centreHeadings ? 'centred-headings' : '' }, parts));
+  return el('div', { className: 'grid-wrap' }, el('table', {}, parts));
 }
 
 function renderKeyed(name) {

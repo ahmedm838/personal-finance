@@ -222,14 +222,15 @@ thead th {
   letter-spacing: .04em;
   padding: 9px 10px;
   white-space: normal;
-  vertical-align: bottom;
+  text-align: center;
+  vertical-align: middle;
   position: sticky;
   top: 0;
 }
 
 tbody tr:hover { background: var(--accent-soft); }
 
-td.num, th.num { text-align: right; }
+td.num { text-align: right; }
 td .ro { display: block; padding: 7px 10px; }
 td .ro.calc { color: var(--muted); }
 
@@ -422,12 +423,9 @@ th .sort {
   cursor: pointer;
 }
 
-th.num .sort { width: 100%; text-align: right; }
+th .sort { width: 100%; text-align: center; }
 th .sort:hover { color: var(--accent); }
 
-.centred-headings thead th,
-.centred-headings thead th.num { text-align: center; vertical-align: middle; }
-.centred-headings thead th .sort { text-align: center; }
 
 /* A keyed field puts its name beside the box rather than above it. */
 .panel-body .fields { max-width: 560px; }
