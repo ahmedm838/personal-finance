@@ -398,7 +398,7 @@ function renderGrid(name) {
     entries.sort((a, b) => {
       const first = numeric(col) && !col.sortBy
         ? (Number(value(a.row)) || 0) - (Number(value(b.row)) || 0)
-        : String(value(a.row) ?? '').localeCompare(String(value(b.row) ?? ''));
+        : String(value(a.row) ?? '').localeCompare(String(value(b.row) ?? ''), undefined, { numeric: true });
       if (first) return sign * first;
       // Rows that tie read A-Z, whichever way the column itself is sorted.
       return tie ? String(tie(a.row) ?? '').localeCompare(String(tie(b.row) ?? '')) : 0;

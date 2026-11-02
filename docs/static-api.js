@@ -36,14 +36,17 @@ const tables = {
 
   Accounts: {
     label: 'Chart of Accounts',
+    // The codes follow the levels, so none of them is typed in.
     columns: [
       { key: 'level1', label: 'Level 1', type: 'text' },
-      { key: 'code1', label: 'Code 1', type: 'text' },
+      { key: 'code1', label: 'Code 1', type: 'text', computed: true, width: 90 },
       { key: 'level2', label: 'Level 2', type: 'text' },
-      { key: 'code2', label: 'Code 2', type: 'text' },
+      { key: 'code2', label: 'Code 2', type: 'text', computed: true, width: 90 },
       { key: 'level3', label: 'Account', type: 'text' },
-      { key: 'code3', label: 'Code 3', type: 'text' },
+      { key: 'code3', label: 'Code 3', type: 'text', computed: true, width: 90 },
     ],
+    sortable: ['level1', 'level2', 'level3', 'code3'],
+    defaultSort: { key: 'code3', dir: 'asc' },
   },
 
   Entries: {
@@ -476,6 +479,47 @@ const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) 
 const sum = (rows, key) => rows.reduce((t, r) => t + num(r[key]), 0);
 const ceilTo = (v, step) => Math.ceil(v / step) * step;
 
+// The chart of accounts codes itself: a side gives the first digit, a term
+// the second, and each account is numbered in turn under its heading.
+const SIDE_DIGITS = { assets: '1', liabilities: '2' };
+const TERM_DIGITS = { current: '1', noncurrent: '2' };
+
+/** 'Non-Current', 'non current' and 'noncurrent' are one heading. */
+const heading = (v) => String(v ?? '').toLowerCase().replace(/[^a-z]/g, '');
+
+/**
+ * A digit per heading: the ones named above keep their number, and any
+ * other is given the next free one as it first appears, so a chart that
+ * grows a third side still codes.
+ */
+function digitFor(known) {
+  const extra = new Map();
+  let next = 3;
+  return (value) => {
+    const key = heading(value);
+    if (!key) return '';
+    if (known[key]) return known[key];
+    if (!extra.has(key)) { extra.set(key, String(next)); next += 1; }
+    return extra.get(key);
+  };
+}
+
+function codeChart(rows) {
+  const side = digitFor(SIDE_DIGITS);
+  const term = digitFor(TERM_DIGITS);
+  const counted = {};
+
+  for (const r of rows || []) {
+    const one = side(r.level1);
+    const two = term(r.level2);
+    r.code1 = one;
+    r.code2 = one && two ? one + two : '';
+    if (!r.code2) { r.code3 = ''; continue; }
+    counted[r.code2] = (counted[r.code2] || 0) + 1;
+    r.code3 = r.code2 + counted[r.code2];
+  }
+}
+
 function settingsMap(rows) {
   const m = {};
   for (const r of rows || []) if (r.key) m[r.key] = num(r.value);
@@ -508,6 +552,8 @@ function dayOfMonth(iso) {
  * sheet, and bills/fees/fuel feed the monthly expense lines.
  */
 function compute(db, rates) {
+  codeChart(db.Accounts);
+
   const s = settingsMap(db.Settings);
   const today = new Date().toISOString().slice(0, 10);
 
@@ -713,8 +759,8 @@ function compute(db, rates) {
   // The balance sheet is the chart of accounts with the ledger against it:
   // a group per level-2 heading, the accounts in code order. Rename, move
   // or add an account in the chart and it shows up here on its own.
-  const chart = [...(db.Accounts || [])]
-    .sort((a, b) => String(a.code3 ?? '').localeCompare(String(b.code3 ?? '')));
+  const chart = [...(db.Accounts || [])].sort((a, b) => String(a.code3 ?? '')
+    .localeCompare(String(b.code3 ?? ''), undefined, { numeric: true }));
 
   const buildSide = (side) => {
     const groups = [];
