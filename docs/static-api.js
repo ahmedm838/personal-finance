@@ -69,6 +69,15 @@ const tables = {
       { key: 'amount', label: 'Amount (EGP)', type: 'money', computed: true, width: 150 },
     ],
     sortable: ['account', 'currency', 'fx_amount', 'amount'],
+    // What is owned less what is owed.
+    totals: { amount: 'net' },
+    net: {
+      table: 'Accounts',
+      on: 'account',
+      key: 'level3',
+      level: 'level1',
+      negative: ['Liabilities'],
+    },
     filters: true,
     quickFilters: {
       table: 'Accounts',
@@ -763,14 +772,29 @@ function compute(db, rates) {
   };
 }
 
+/**
+ * A column where some rows count against the rest: a liability is owed,
+ * not owned, so it comes off the total rather than adding to it. Which
+ * side a row falls on is read from the chart of accounts.
+ */
+function netTotal(spec, rows, chart, key) {
+  const side = new Map((chart || []).map((r) => [r[spec.key], r[spec.level]]));
+  return rows.reduce((t, r) => {
+    const owed = spec.negative.includes(side.get(r[spec.on]));
+    return t + (owed ? -1 : 1) * num(r[key]);
+  }, 0);
+}
+
 /** Column totals for a table, following the `totals` spec in the schema. */
-function tableTotals(name, rows) {
+function tableTotals(name, rows, db) {
   const def = tables[name];
   if (!def || !def.totals) return null;
   const out = {};
   for (const [key, how] of Object.entries(def.totals)) {
     if (how === 'sum') {
       out[key] = sum(rows, key);
+    } else if (how === 'net') {
+      out[key] = netTotal(def.net, rows, (db || {})[def.net.table], key);
     } else if (how.startsWith('wavg:')) {
       const weightKey = how.slice(5);
       const w = sum(rows, weightKey);
@@ -995,7 +1019,7 @@ function payload() {
   const { balance, derived } = compute(db, rates || null);
   const data = {};
   for (const name of Object.keys(tables)) {
-    data[name] = { rows: db[name] || [], totals: tableTotals(name, db[name] || []) };
+    data[name] = { rows: db[name] || [], totals: tableTotals(name, db[name] || [], db) };
   }
   return { tabs, schema: tables, data, balance, derived, save: 'manual', unsaved: changedRows() };
 }

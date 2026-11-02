@@ -233,6 +233,15 @@ function totalsFor(def, rows) {
   for (const [key, how] of Object.entries(def.totals)) {
     if (how === 'sum') {
       out[key] = column(key);
+    } else if (how === 'net') {
+      // A liability is owed, not owned, so it comes off the total.
+      const spec = def.net;
+      const chart = (state.data[spec.table] || { rows: [] }).rows;
+      const side = new Map(chart.map((r) => [r[spec.key], r[spec.level]]));
+      out[key] = rows.reduce((t, r) => {
+        const owed = spec.negative.includes(side.get(r[spec.on]));
+        return t + (owed ? -1 : 1) * (Number(r[key]) || 0);
+      }, 0);
     } else if (how.startsWith('wavg:')) {
       const weight = how.slice(5);
       const total = column(weight);

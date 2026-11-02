@@ -212,7 +212,7 @@ function payload() {
   const { balance, derived } = compute(db, rates || null);
   const data = {};
   for (const name of Object.keys(tables)) {
-    data[name] = { rows: db[name] || [], totals: tableTotals(name, db[name] || []) };
+    data[name] = { rows: db[name] || [], totals: tableTotals(name, db[name] || [], db) };
   }
   return { tabs, schema: tables, data, balance, derived, save: 'manual', unsaved: changedRows() };
 }
