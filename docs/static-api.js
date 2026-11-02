@@ -988,6 +988,37 @@ async function digest(bytes) {
  * another device, or an edit to the workbook itself — the published file
  * wins, otherwise this browser would sit on a snapshot forever.
  */
+/**
+ * The workbook as it stands in the repo.
+ *
+ * A save commits straight away, but the copy the site serves only changes
+ * once Pages has rebuilt and its cache has turned over, which is a minute
+ * or so behind. Reading through the API skips both, so a reload right
+ * after saving shows what was saved. Without a token the published copy
+ * is all there is.
+ */
+async function fetchWorkbook() {
+  if (token) {
+    try {
+      const path = `/repos/${REPO.owner}/${REPO.repo}/contents/${REPO.path}`
+        + `?ref=${REPO.branch}&t=${Date.now()}`;
+      const meta = await gh(path, { cache: 'no-store' });
+      // Over a megabyte the API stops inlining the content.
+      if (meta.content) {
+        fileSha = meta.sha;
+        const raw = atob(meta.content.replace(/\s/g, ''));
+        return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+      }
+    } catch {
+      // Rate-limited, offline, or a token that cannot read: fall back.
+    }
+  }
+
+  const res = await realFetch(DATA_URL, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
 async function loadDb() {
   await loadRates();
   if (db) return db;
@@ -995,9 +1026,7 @@ async function loadDb() {
   const saved = localStorage.getItem(STORE_KEY);
   let bytes = null;
   try {
-    const res = await realFetch(DATA_URL, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    bytes = new Uint8Array(await res.arrayBuffer());
+    bytes = await fetchWorkbook();
   } catch (e) {
     // Being offline is survivable as long as this browser has its own copy.
     if (!saved) throw new ApiError(500, `Could not load finance.xlsx (${e.message})`);
