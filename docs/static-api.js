@@ -49,7 +49,15 @@ const tables = {
   Entries: {
     label: 'Assets & Liabilities',
     columns: [
-      { key: 'account', label: 'Account', type: 'select', optionsFrom: 'Accounts.level3' },
+      // The chart of accounts has an order of its own, and the code carries
+      // it, so the column sorts on that rather than on the name.
+      {
+        key: 'account',
+        label: 'Account',
+        type: 'select',
+        optionsFrom: 'Accounts.level3',
+        sortBy: { table: 'Accounts', on: 'level3', take: 'code3' },
+      },
       { key: 'item', label: 'Item Description', type: 'text', width: 280 },
       { key: 'currency', label: 'Ccy', type: 'select', options: ['EGP', 'USD', 'EUR'], width: 76 },
       { key: 'fx_amount', label: 'Amount', type: 'number', width: 130, derived: true, hint: "In the row's own currency. Filled in for you when the row is linked." },
@@ -69,6 +77,7 @@ const tables = {
       { key: 'amount', label: 'Amount (EGP)', type: 'money', computed: true, width: 150 },
     ],
     sortable: ['account', 'currency', 'fx_amount', 'amount'],
+    defaultSort: { key: 'account', dir: 'asc' },
     // What is owned less what is owed.
     totals: { amount: 'net' },
     net: {

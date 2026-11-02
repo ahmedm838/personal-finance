@@ -254,6 +254,18 @@ function totalsFor(def, rows) {
 }
 
 /**
+ * What a column sorts on: its own value, or one its value stands for in
+ * another table, such as an account name and the code it is filed under.
+ */
+function sortValue(col) {
+  if (!col.sortBy) return (row) => row[col.key];
+  const { table, on, take } = col.sortBy;
+  const rows = (state.data[table] || { rows: [] }).rows;
+  const code = new Map(rows.map((r) => [r[on], r[take]]));
+  return (row) => code.get(row[col.key]);
+}
+
+/**
  * Which values of the matched column still count, given what is picked in
  * the quick filters. Null means nothing is picked, so everything counts.
  */
@@ -379,9 +391,10 @@ function renderGrid(name) {
   if (order) {
     const col = def.columns.find((c) => c.key === order.key);
     const sign = order.dir === 'desc' ? -1 : 1;
-    entries.sort((a, b) => sign * (numeric(col)
-      ? (Number(a.row[order.key]) || 0) - (Number(b.row[order.key]) || 0)
-      : String(a.row[order.key] ?? '').localeCompare(String(b.row[order.key] ?? ''))));
+    const value = sortValue(col);
+    entries.sort((a, b) => sign * (numeric(col) && !col.sortBy
+      ? (Number(value(a.row)) || 0) - (Number(value(b.row)) || 0)
+      : String(value(a.row) ?? '').localeCompare(String(value(b.row) ?? ''))));
   }
   const visibleRows = entries.map((e) => e.row);
 
