@@ -404,11 +404,30 @@ function base64(bytes) {
   return btoa(s);
 }
 
-async function currentSha() {
-  if (fileSha) return fileSha;
-  const meta = await gh(`/repos/${REPO.owner}/${REPO.repo}/contents/${REPO.path}?ref=${REPO.branch}`);
+/**
+ * GitHub marks this response cacheable for a minute, so after a clash the
+ * browser would hand back the very sha that was just rejected. A forced
+ * read goes past the cache.
+ */
+async function currentSha(fresh = false) {
+  if (fileSha && !fresh) return fileSha;
+  const path = `/repos/${REPO.owner}/${REPO.repo}/contents/${REPO.path}?ref=${REPO.branch}`;
+  const meta = await gh(fresh ? `${path}&t=${Date.now()}` : path, { cache: 'no-store' });
   fileSha = meta.sha;
   return fileSha;
+}
+
+/**
+ * The published workbook moved on since this page read it. Saving replaces
+ * it wholesale, so whatever was saved elsewhere in between would go.
+ */
+function confirmOverwrite() {
+  return confirm(
+    'The published workbook has changed since this page loaded.\n\n'
+    + 'Saving replaces it with the figures on this screen, so any change made '
+    + 'elsewhere since then is lost.\n\n'
+    + 'OK to save anyway, or Cancel to leave the newer file alone.',
+  );
 }
 
 async function push() {
@@ -421,23 +440,31 @@ async function push() {
     await loadDb();
     const bytes = new Uint8Array(XLSX.write(workbook(), { bookType: 'xlsx', type: 'array' }));
     const content = base64(bytes);
-    const put = async () => gh(`/repos/${REPO.owner}/${REPO.repo}/contents/${REPO.path}`, {
+    const put = async (sha) => gh(`/repos/${REPO.owner}/${REPO.repo}/contents/${REPO.path}`, {
       method: 'PUT',
       body: JSON.stringify({
         message: 'Update figures from the web app',
         content,
         branch: REPO.branch,
-        sha: await currentSha(),
+        sha,
       }),
     });
 
+    // A clash means the published file moved on. Ask once, then take the
+    // sha it actually has now; a second clash is a race worth one more go.
     let res;
-    try {
-      res = await put();
-    } catch (e) {
-      // A stale sha means the file moved on elsewhere; take the new one and retry.
-      fileSha = null;
-      res = await put();
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        res = await put(await currentSha(attempt > 1));
+        break;
+      } catch (e) {
+        const clash = e.status === 409 || e.status === 422;
+        if (!clash || attempt === 3) throw e;
+        if (attempt === 1 && !confirmOverwrite()) {
+          setStatus('Save cancelled — the published file is newer');
+          return;
+        }
+      }
     }
 
     fileSha = res.content.sha;
@@ -450,6 +477,8 @@ async function push() {
       // An expired or revoked token will not start working on a retry.
       forgetToken();
       setStatus('Token rejected — connect again', true);
+    } else if (e.status === 409 || e.status === 422) {
+      setStatus('Save failed — the published file keeps changing. Try again in a moment.', true);
     } else {
       setStatus(`Save failed — ${e.message}`, true);
     }
