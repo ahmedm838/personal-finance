@@ -350,6 +350,21 @@ function filterRow(name, def) {
   return tr;
 }
 
+// Below this a heading breaks into single letters and a figure wraps, so
+// no column goes narrower, even one the schema says nothing about.
+const MIN_COLUMN = 92;
+
+/**
+ * How wide a column asks to be.
+ *
+ * A declared width is both what the column wants and the least it will
+ * take; whatever room is left over after that the browser shares out.
+ */
+function columnWidth(col) {
+  if (col.width) return `width:${col.width}px;min-width:${col.width}px`;
+  return `min-width:${MIN_COLUMN}px`;
+}
+
 function renderGrid(name) {
   const def = state.schema[name];
   const { rows, totals } = state.data[name];
@@ -360,7 +375,7 @@ function renderGrid(name) {
       const th = el('th', {
         className: numeric(c) ? 'num' : '',
         title: c.hint || '',
-        style: c.width ? `width:${c.width}px` : '',
+        style: columnWidth(c),
       });
 
       if (!(def.sortable || []).includes(c.key)) {

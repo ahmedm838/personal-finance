@@ -149,7 +149,7 @@ body {
 .tabs button:hover { color: var(--ink); }
 .tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 
-main { padding: 20px; max-width: 1500px; margin: 0 auto; }
+main { padding: 20px; max-width: 1600px; margin: 0 auto; }
 
 /* ---------- Panels ---------- */
 
@@ -205,7 +205,10 @@ main { padding: 20px; max-width: 1500px; margin: 0 auto; }
 
 .grid-wrap { overflow-x: auto; }
 
-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+/* A table fills the panel, but its columns come first: when they do not all
+   fit it grows past the panel and the wrapper scrolls sideways, rather than
+   squeezing every column until the headings and figures wrap. */
+table { border-collapse: collapse; min-width: 100%; font-variant-numeric: tabular-nums; }
 
 th, td {
   border-bottom: 1px solid var(--line);
@@ -232,6 +235,7 @@ tbody tr:hover { background: var(--accent-soft); }
 
 td.num { text-align: right; }
 td .ro { display: block; padding: 7px 10px; }
+td.num .ro, tfoot td.num { white-space: nowrap; }
 td .ro.calc { color: var(--muted); }
 
 tfoot td {
