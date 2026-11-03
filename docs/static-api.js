@@ -225,9 +225,12 @@ const tables = {
       { key: 'yearly_saving', label: 'Yearly Saving', type: 'money', computed: true, whole: true, width: 100 },
       { key: 'added_deposits', label: 'Added Deposits', type: 'money', whole: true, width: 100 },
       { key: 'to_be_invested', label: 'To Be Invested', type: 'money', whole: true, width: 100 },
-      { key: 'dividends_spending', label: 'Dividends', type: 'money', whole: true, width: 100 },
       { key: 'spending', label: 'Spending', type: 'money', computed: true, whole: true, width: 95 },
+      // What everything invested up to and including this year returns.
+      { key: 'profit_rate', label: 'Profit %', type: 'percent', fixedPercent: 2, width: 90 },
+      { key: 'dividends_spending', label: 'Dividends', type: 'money', computed: true, whole: true, width: 100 },
     ],
+    countInTotal: true,
     totals: {
       yearly_saving: 'sum',
       added_deposits: 'sum',
@@ -478,6 +481,7 @@ const YUNIS_START_AGE = 3;
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0);
 const sum = (rows, key) => rows.reduce((t, r) => t + num(r[key]), 0);
 const ceilTo = (v, step) => Math.ceil(v / step) * step;
+const floorTo = (v, step) => Math.floor(v / step) * step;
 
 // The chart of accounts codes itself: a side gives the first digit, a term
 // the second, and each account is numbered in turn under its heading.
@@ -711,17 +715,23 @@ function compute(db, rates) {
   // Only the first year is typed in. Deposits roll forward by what was added
   // the year before, and expenses grow by that year's inflation rate.
   let previous = null;
+  let invested = 0;
   for (const r of db.CashFlow || []) {
     if (previous) {
       r.deposits = num(previous.deposits) + num(previous.added_deposits);
       r.expenses = Math.round((num(previous.expenses) * (1 + num(r.inf_rate))) / 1000) * 1000;
     }
 
-    r.interest = (num(r.deposits) * num(r.rate)) / 12;
+    // Interest is taken to the thousand below, not to the pound.
+    r.interest = floorTo((num(r.deposits) * num(r.rate)) / 12, 1000);
     r.earnings = num(r.interest) + num(r.salary) + num(r.other_income);
     r.saving = r.earnings - num(r.expenses);
     r.yearly_saving = r.saving * 12;
     r.spending = r.yearly_saving - num(r.added_deposits) - num(r.to_be_invested);
+
+    // Everything put aside so far earns this year's rate of profit.
+    invested += num(r.to_be_invested);
+    r.dividends_spending = invested * num(r.profit_rate);
     previous = r;
   }
 
