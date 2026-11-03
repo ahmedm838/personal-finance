@@ -1032,34 +1032,34 @@ async function loadDb() {
     if (!saved) throw new ApiError(500, `Could not load finance.xlsx (${e.message})`);
   }
 
-  const published = bytes ? await digest(bytes) : null;
-  let fromFile = null;
   if (bytes) {
+    // The workbook is the record. Whatever this device was holding is a
+    // leftover draft, and carrying it over is worse than dropping it: it
+    // shows up as unsaved on a phone that has not been opened in days,
+    // and saving there would push those old figures over newer ones.
     const wb = XLSX.read(bytes, { type: 'array', cellDates: false });
-    fromFile = {};
+    db = {};
     for (const [name, def] of Object.entries(tables)) {
-      fromFile[name] = sheetToRows(wb.Sheets[name], def);
+      db[name] = sheetToRows(wb.Sheets[name], def);
     }
+
+    markSaved();
+    localStorage.removeItem(STORE_KEY);
+    localStorage.setItem(BASELINE_KEY, await digest(bytes));
+    return db;
   }
 
-  if (saved && (!published || localStorage.getItem(BASELINE_KEY) === published)) {
-    try {
-      db = JSON.parse(saved);
-      // The stored copy may already hold edits, so what counts as saved is
-      // the published file, not what this browser happens to be holding.
-      savedDb = fromFile ? JSON.parse(JSON.stringify(fromFile)) : JSON.parse(saved);
-      return db;
-    } catch {
-      localStorage.removeItem(STORE_KEY);
-    }
-  } else if (saved) {
-    if (typeof toast === 'function') toast('Loaded newer figures from the repo');
+  // Nothing could be fetched, so this device's own copy is all there is.
+  // It counts as saved: what it holds cannot be compared with a workbook
+  // we have not read.
+  try {
+    db = JSON.parse(saved);
+  } catch {
+    localStorage.removeItem(STORE_KEY);
+    throw new ApiError(500, 'Could not load finance.xlsx, and this device has no usable copy.');
   }
-
-  db = fromFile;
   markSaved();
-  localStorage.removeItem(STORE_KEY);
-  localStorage.setItem(BASELINE_KEY, published);
+  if (typeof toast === 'function') toast('Offline — showing the last copy on this device');
   return db;
 }
 
@@ -1074,9 +1074,21 @@ function persist() {
 }
 
 /** Only the stored columns matter: the computed ones are never written. */
+/**
+ * What counts as a row worth saving.
+ *
+ * A worked-out plan parameter is never typed in, and three of them follow
+ * the exchange rate, which moves on its own. Counting those as edits put a
+ * phone opened the next day at "Save (3)" having touched nothing. Columns
+ * marked derived are left in, because most of them are only derived on
+ * some rows and typed in on the rest.
+ */
 function storedShape(name, row) {
+  const def = tables[name];
+  if (def.keyed && (def.derivedKeys || []).includes(row.key)) return `worked out: ${row.key}`;
+
   const out = {};
-  for (const col of tables[name].columns) if (!col.computed) out[col.key] = row[col.key] ?? null;
+  for (const col of def.columns) if (!col.computed) out[col.key] = row[col.key] ?? null;
   return JSON.stringify(out);
 }
 
