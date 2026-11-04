@@ -751,16 +751,16 @@ function renderDepositsSummary() {
 
   const body = el('tbody', {}, s.schedule.map((r) => el('tr', {}, [
     cell(fmt.int(r.day), false),
-    cell(r.egp ? fmt.money(r.egp) : ''),
-    cell(r.usd ? fmt.money(r.usd) : ''),
+    cell(r.egp ? whole(r.egp) : ''),
+    cell(r.usd ? whole(r.usd) : ''),
     cell(fmt.int(r.count)),
     cell(fmt.int(r.banks)),
   ])));
 
   const totals = el('tfoot', {}, el('tr', {}, [
     foot('Total', false),
-    foot(fmt.money(s.egp)),
-    foot(fmt.money(s.usd)),
+    foot(whole(s.egp)),
+    foot(whole(s.usd)),
     foot(fmt.int(s.count)),
     foot(fmt.int(s.banks)),
   ]));
