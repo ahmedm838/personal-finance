@@ -141,8 +141,10 @@ const tables = {
   Bills: {
     label: 'Monthly Bills',
     columns: [
-      { key: 'item', label: 'Bill', type: 'text', width: 270 },
-      { key: 'remarks', label: 'Remarks', type: 'text', width: 760 },
+      { key: 'item', label: 'Bill', type: 'text', width: 135 },
+      // No fixed width: Remarks takes whatever room is left, so the table is
+      // never wider than Monthly Expenses above it.
+      { key: 'remarks', label: 'Remarks', type: 'text' },
       { key: 'amount', label: 'Amount', type: 'money', width: 270 },
     ],
     sortable: ['amount'],
