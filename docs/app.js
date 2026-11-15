@@ -745,24 +745,27 @@ function renderDepositsSummary() {
     el('th', { textContent: 'Day' }),
     el('th', { className: 'num', textContent: 'EGP' }),
     el('th', { className: 'num', textContent: 'USD' }),
-    el('th', { className: 'num', textContent: 'Deposits' }),
-    el('th', { className: 'num', textContent: 'Banks' }),
+    el('th', { textContent: 'Deposits' }),
   ]));
+
+  // One line per deposit: its bank, then its amount in its own currency.
+  const deposits = (list) => el('td', {}, el('span', { className: 'ro deposit-list' }, list.map((d) => el('span', { className: 'deposit-line' }, [
+    el('span', { className: 'deposit-bank', textContent: d.bank || '—' }),
+    el('span', { className: 'deposit-amount', textContent: `${whole(d.amount)}${d.currency === 'USD' ? ' USD' : ''}` }),
+  ]))));
 
   const body = el('tbody', {}, s.schedule.map((r) => el('tr', {}, [
     cell(fmt.int(r.day), false),
     cell(r.egp ? whole(r.egp) : ''),
     cell(r.usd ? whole(r.usd) : ''),
-    cell(fmt.int(r.count)),
-    cell(fmt.int(r.banks)),
+    deposits(r.deposits),
   ])));
 
   const totals = el('tfoot', {}, el('tr', {}, [
     foot('Total', false),
     foot(whole(s.egp)),
     foot(whole(s.usd)),
-    foot(fmt.int(s.count)),
-    foot(fmt.int(s.banks)),
+    foot(`${fmt.int(s.count)} deposits · ${fmt.int(s.banks)} banks`, false),
   ]));
 
   return el('section', { className: 'panel' }, [
