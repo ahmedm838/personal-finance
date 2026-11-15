@@ -748,10 +748,12 @@ function renderDepositsSummary() {
     el('th', { textContent: 'Deposits' }),
   ]));
 
-  // One line per deposit: its bank, then its amount in its own currency.
+  // One line per deposit: bank, amount in its own currency, rate, end date.
   const deposits = (list) => el('td', {}, el('span', { className: 'ro deposit-list' }, list.map((d) => el('span', { className: 'deposit-line' }, [
     el('span', { className: 'deposit-bank', textContent: d.bank || '—' }),
     el('span', { className: 'deposit-amount', textContent: `${whole(d.amount)}${d.currency === 'USD' ? ' USD' : ''}` }),
+    el('span', { className: 'deposit-rate', textContent: fmt.percent(d.rate) }),
+    el('span', { className: 'deposit-end', textContent: d.end ? `ends ${asDate(d.end)}` : '' }),
   ]))));
 
   const body = el('tbody', {}, s.schedule.map((r) => el('tr', {}, [

@@ -601,7 +601,7 @@ function compute(db, rates) {
       const row = byDay.get(r.day);
       row[currency] += num(r.monthly);
       row.count += 1;
-      row.deposits.push({ bank: r.bank || '', amount: num(r.amount), currency: currency.toUpperCase() });
+      row.deposits.push({ bank: r.bank || '', amount: num(r.amount), currency: currency.toUpperCase(), rate: r.rate, end: r.end || '' });
     }
   }
 

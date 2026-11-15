@@ -481,6 +481,8 @@ th .sort:hover { color: var(--accent); }
 .quick-filters select:focus { outline: none; border-color: var(--accent); }
 
 /* Monthly returns: each deposit on its own line, bank left, amount right. */
-.deposit-list { display: grid; gap: 2px; width: max-content; min-width: 200px; }
-.deposit-line { display: flex; justify-content: space-between; gap: 16px; }
-.deposit-amount { font-variant-numeric: tabular-nums; }
+.deposit-list { display: grid; gap: 2px; width: max-content; }
+/* Fixed tracks so bank, amount, rate and end date line up from row to row. */
+.deposit-line { display: grid; grid-template-columns: 64px 100px 64px 112px; gap: 16px; }
+.deposit-amount, .deposit-rate { text-align: right; font-variant-numeric: tabular-nums; }
+.deposit-rate, .deposit-end { color: var(--muted); }
