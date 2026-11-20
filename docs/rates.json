@@ -1,8 +1,8 @@
 {
-  "usd": 53.8883,
-  "eur": 59.0831,
+  "usd": 53.8797,
+  "eur": 59.23,
   "source": "CBE sell rate",
-  "rateDate": "2026-11-18",
+  "rateDate": "2026-11-19",
   "attribution": "AllRatesToday (CC BY-NC 4.0)",
-  "fetched": "2026-11-19T15:54:26.909Z"
+  "fetched": "2026-11-20T15:37:29.923Z"
 }
