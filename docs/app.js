@@ -704,6 +704,8 @@ function renderBalance() {
 
   frag.append(el('div', { className: 'cards' }, [
     card('Capital paid', whole(s.capitalPaid)),
+    card('Total assets', whole(b.totals.assets)),
+    card('Total liabilities', whole(b.totals.liabilities)),
     card('Equity', whole(s.equity)),
     card('Profit & loss', whole(s.profit), s.profit >= 0 ? 'pos' : 'neg'),
     card('Return on capital', wholePercent(s.overYears), s.overYears >= 0 ? 'pos' : 'neg'),
