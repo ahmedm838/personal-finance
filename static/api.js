@@ -6,16 +6,20 @@
  * SheetJS and every route the front end calls is answered here instead, which
  * keeps public/app.js identical between the two builds.
  *
- * Edits live in this browser's localStorage. They do not reach the repo —
- * "Download .xlsx" is how they get back into it.
+ * Edits live in this browser's localStorage until Save commits them to the
+ * repo through the GitHub API (see "Writing back to the repo" below).
  */
 
 const DATA_URL = new URL('finance.xlsx', document.baseURI).href;
 const STORE_KEY = 'personal-finance:db';
 const AUTH_KEY = 'personal-finance:authed';
-// Which published file the stored copy was taken from.
-const BASELINE_KEY = 'personal-finance:baseline';
+// The published workbook already parsed into rows, keyed by its git blob sha.
+// When the repo still holds that exact file, the page opens from this without
+// downloading or parsing anything.
+const CACHE_KEY = 'personal-finance:cache';
 const PASSWORD = '9987';
+// A slow rate mirror should not hold the whole page; rates.json covers it.
+const RATE_TIMEOUT = 4000;
 // The CBE's own page refuses automated requests; this is an open mirror of
 // the same published table, no key needed.
 const RATE_FEED = 'https://raw.githubusercontent.com/AllRates-Today/central-bank-exchange-rates/main/data/cbe/latest.json';
@@ -72,11 +76,16 @@ function sellRate(body, base) {
  * rather than whatever the last scheduled run committed. The repo's
  * rates.json is the fallback for being offline or the source being down.
  */
-async function loadRates() {
-  if (rates !== null) return rates;
+let ratesLoading = null;
+function loadRates() {
+  if (rates !== null) return Promise.resolve(rates);
+  ratesLoading ||= fetchRates().finally(() => { ratesLoading = null; });
+  return ratesLoading;
+}
 
+async function fetchRates() {
   try {
-    const res = await realFetch(RATE_FEED, { cache: 'no-store' });
+    const res = await realFetch(RATE_FEED, { cache: 'no-store', signal: timeout(RATE_TIMEOUT) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const body = await res.json();
@@ -103,75 +112,157 @@ async function loadRates() {
   return rates;
 }
 
-async function digest(bytes) {
-  const h = await crypto.subtle.digest('SHA-256', bytes);
+/** Older browsers lack AbortSignal.timeout; they simply wait. */
+const timeout = (ms) => (typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(ms) : undefined);
+
+/**
+ * SheetJS is a quarter of a megabyte, and a page opened from the cached rows
+ * never needs it. It is fetched the first time something has to read or write
+ * a workbook, and in the background once a connected page is idle, so Save
+ * does not wait on it. XLSX_SRC is injected by scripts/build-pages.js.
+ */
+let xlsxLoading = null;
+function ensureXlsx() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  xlsxLoading ||= new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = new URL(XLSX_SRC, document.baseURI).href;
+    s.async = true;
+    s.onload = () => (window.XLSX ? resolve(window.XLSX) : reject(new Error('spreadsheet library did not start')));
+    s.onerror = () => { xlsxLoading = null; s.remove(); reject(new Error('could not load the spreadsheet library')); };
+    document.head.append(s);
+  });
+  return xlsxLoading;
+}
+
+/** The id git gives these exact bytes, so it can be compared with the repo's. */
+async function blobSha(bytes) {
+  const head = new TextEncoder().encode(`blob ${bytes.length}\0`);
+  const all = new Uint8Array(head.length + bytes.length);
+  all.set(head);
+  all.set(bytes, head.length);
+  const h = await crypto.subtle.digest('SHA-1', all);
   return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/**
- * The stored copy is only trustworthy while the file it was taken from is
- * still the one being published. Once the repo moves on — a commit from
- * another device, or an edit to the workbook itself — the published file
- * wins, otherwise this browser would sit on a snapshot forever.
- */
-/**
- * The workbook as it stands in the repo.
- *
- * A save commits straight away, but the copy the site serves only changes
- * once Pages has rebuilt and its cache has turned over, which is a minute
- * or so behind. Reading through the API skips both, so a reload right
- * after saving shows what was saved. Without a token the published copy
- * is all there is.
- */
-async function fetchWorkbook() {
-  if (token) {
-    try {
-      const path = `/repos/${REPO.owner}/${REPO.repo}/contents/${REPO.path}`
-        + `?ref=${REPO.branch}&t=${Date.now()}`;
-      const meta = await gh(path, { cache: 'no-store' });
-      // Over a megabyte the API stops inlining the content.
-      if (meta.content) {
-        fileSha = meta.sha;
-        const raw = atob(meta.content.replace(/\s/g, ''));
-        return Uint8Array.from(raw, (c) => c.charCodeAt(0));
-      }
-    } catch {
-      // Rate-limited, offline, or a token that cannot read: fall back.
-    }
+function readCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    return c && typeof c.sha === 'string' && c.db ? c : null;
+  } catch {
+    return null;
   }
-
-  const res = await realFetch(DATA_URL, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return new Uint8Array(await res.arrayBuffer());
 }
 
+function writeCache(sha, rows) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ sha, db: rows }));
+  } catch {
+    // A full store only costs the next load a download.
+  }
+}
+
+async function parseWorkbook(bytes) {
+  await ensureXlsx();
+  const wb = XLSX.read(bytes, { type: 'array', cellDates: false });
+  const out = {};
+  for (const [name, def] of Object.entries(tables)) out[name] = sheetToRows(wb.Sheets[name], def);
+  return out;
+}
+
+const repoFile = () => `/repos/${REPO.owner}/${REPO.repo}/contents/${REPO.path}`;
+
+/**
+ * With a token, ask the repo which file it holds — a listing of the folder,
+ * a kilobyte or so — and only download the workbook when that is not the one
+ * already parsed here. Reading the repo rather than the Pages copy means a
+ * reload straight after saving shows what was saved, without waiting for the
+ * Pages rebuild.
+ */
+async function fromRepo(cached) {
+  const dir = REPO.path.split('/').slice(0, -1).join('/');
+  const file = REPO.path.split('/').pop();
+  const list = await gh(`/repos/${REPO.owner}/${REPO.repo}/contents/${dir}?ref=${REPO.branch}&t=${Date.now()}`, { cache: 'no-store' });
+  const entry = Array.isArray(list) && list.find((f) => f.name === file);
+  if (!entry) throw new Error(`${REPO.path} is not in the repo`);
+
+  if (cached && cached.sha === entry.sha) return { sha: entry.sha, rows: cached.db };
+
+  const res = await realFetch(`https://api.github.com${repoFile()}?ref=${REPO.branch}&t=${Date.now()}`, {
+    cache: 'no-store',
+    headers: { Accept: 'application/vnd.github.raw', Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = new Error(`GitHub returned ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  return { sha: await blobSha(bytes), rows: await parseWorkbook(bytes) };
+}
+
+/**
+ * Without a token, the Pages copy. "no-cache" lets the browser revalidate
+ * what it already has instead of downloading it again, and an unchanged file
+ * is not parsed again either.
+ */
+async function fromPages(cached) {
+  const res = await realFetch(DATA_URL, { cache: 'no-cache' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  const sha = await blobSha(bytes);
+  if (cached && cached.sha === sha) return { sha, rows: cached.db };
+  return { sha, rows: await parseWorkbook(bytes) };
+}
+
+let dbLoading = null;
+/** Rates and rows are fetched side by side; neither waits on the other. */
 async function loadDb() {
-  await loadRates();
+  if (!db) {
+    dbLoading ||= openDb().finally(() => { dbLoading = null; });
+    await Promise.all([loadRates(), dbLoading]);
+  } else {
+    await loadRates();
+  }
+  return db;
+}
+
+async function openDb() {
+  const cached = readCache();
+  let found = null;
+  let failure = null;
+
+  if (token) {
+    try {
+      found = await fromRepo(cached);
+    } catch (e) {
+      // Rate-limited, offline, or a token that cannot read: fall back.
+      if (e.status === 401) {
+        forgetToken();
+        setStatus('Token rejected — connect again', true);
+      }
+      failure = e;
+    }
+  }
+  if (!found) {
+    try {
+      found = await fromPages(cached);
+    } catch (e) {
+      failure = e;
+    }
+  }
   if (db) return db;
 
-  const saved = localStorage.getItem(STORE_KEY);
-  let bytes = null;
-  try {
-    bytes = await fetchWorkbook();
-  } catch (e) {
-    // Being offline is survivable as long as this browser has its own copy.
-    if (!saved) throw new ApiError(500, `Could not load finance.xlsx (${e.message})`);
-  }
-
-  if (bytes) {
+  if (found) {
     // The workbook is the record. Whatever this device was holding is a
     // leftover draft, and carrying it over is worse than dropping it: it
     // shows up as unsaved on a phone that has not been opened in days,
     // and saving there would push those old figures over newer ones.
-    const wb = XLSX.read(bytes, { type: 'array', cellDates: false });
-    db = {};
-    for (const [name, def] of Object.entries(tables)) {
-      db[name] = sheetToRows(wb.Sheets[name], def);
-    }
-
+    db = found.rows;
+    fileSha = found.sha;
     markSaved();
+    if (!cached || cached.sha !== found.sha) writeCache(found.sha, savedDb);
     localStorage.removeItem(STORE_KEY);
-    localStorage.setItem(BASELINE_KEY, await digest(bytes));
     return db;
   }
 
@@ -179,10 +270,13 @@ async function loadDb() {
   // It counts as saved: what it holds cannot be compared with a workbook
   // we have not read.
   try {
-    db = JSON.parse(saved);
+    db = JSON.parse(localStorage.getItem(STORE_KEY) || 'null') || (cached && cached.db);
   } catch {
     localStorage.removeItem(STORE_KEY);
-    throw new ApiError(500, 'Could not load finance.xlsx, and this device has no usable copy.');
+  }
+  if (!db) {
+    db = null;
+    throw new ApiError(500, `Could not load finance.xlsx (${failure ? failure.message : 'no copy on this device'})`);
   }
   markSaved();
   if (typeof toast === 'function') toast('Offline — showing the last copy on this device');
@@ -240,13 +334,16 @@ function changedRows() {
 
 const markSaved = () => { savedDb = JSON.parse(JSON.stringify(db)); };
 
-function workbook() {
+function workbook(rows = db) {
   const wb = XLSX.utils.book_new();
   for (const [name, def] of Object.entries(tables)) {
-    XLSX.utils.book_append_sheet(wb, rowsToSheet(db[name] || [], def), name);
+    XLSX.utils.book_append_sheet(wb, rowsToSheet(rows[name] || [], def), name);
   }
   return wb;
 }
+
+/** Deflated, which roughly halves the file every load and save moves. */
+const workbookBytes = (rows) => new Uint8Array(XLSX.write(workbook(rows), { bookType: 'xlsx', type: 'array', compression: true }));
 
 /** The full application payload: schema, rows, totals and everything derived. */
 function payload() {
@@ -328,7 +425,8 @@ const routes = [
     // table paint first and start the write on the next turn of the loop.
     setTimeout(() => {
       push()
-        .catch(() => { savedDb = previously; })
+        // Cancelled (false) or failed: those edits are still waiting.
+        .then((ok) => { if (ok === false) savedDb = previously; }, () => { savedDb = previously; })
         .finally(() => window.dispatchEvent(new CustomEvent('finance:sync')));
     }, 0);
 
@@ -498,8 +596,11 @@ async function push() {
   setStatus('Saving…');
 
   try {
-    await loadDb();
-    const bytes = new Uint8Array(XLSX.write(workbook(), { bookType: 'xlsx', type: 'array' }));
+    await Promise.all([loadDb(), ensureXlsx()]);
+    // What is written, taken now: anything typed while the upload is under
+    // way is not in it, and must still count as unsaved afterwards.
+    const snapshot = JSON.parse(JSON.stringify(db));
+    const bytes = workbookBytes(snapshot);
     const content = base64(bytes);
     const put = async (sha) => gh(`/repos/${REPO.owner}/${REPO.repo}/contents/${REPO.path}`, {
       method: 'PUT',
@@ -523,15 +624,16 @@ async function push() {
         if (!clash || attempt === 3) throw e;
         if (attempt === 1 && !confirmOverwrite()) {
           setStatus('Save cancelled — the published file is newer');
-          return;
+          return false;
         }
       }
     }
 
     fileSha = res.content.sha;
-    // What we just pushed is now the published file.
-    localStorage.setItem(BASELINE_KEY, await digest(bytes));
-    markSaved();
+    // What we just pushed is now the published file, and the next load can
+    // open straight from it.
+    savedDb = snapshot;
+    writeCache(fileSha, snapshot);
     setStatus(`Saved ${new Date().toLocaleTimeString()}`);
   } catch (e) {
     if (e.status === 401) {
@@ -585,8 +687,8 @@ function forgetToken() {
 $id('github').addEventListener('click', connect);
 
 $id('download').addEventListener('click', async () => {
-  await loadDb();
-  const out = XLSX.write(workbook(), { bookType: 'xlsx', type: 'array' });
+  await Promise.all([loadDb(), ensureXlsx()]);
+  const out = workbookBytes(db);
   const url = URL.createObjectURL(new Blob([out], { type: 'application/vnd.ms-excel' }));
   const a = Object.assign(document.createElement('a'), { href: url, download: 'finance.xlsx' });
   a.click();
@@ -597,6 +699,16 @@ $id('download').addEventListener('click', async () => {
 renderSyncButton();
 setStatus(token ? 'Connected' : 'Not connected');
 noteActivity();
+
+// Start fetching while the password is being typed; the figures are public
+// regardless, so there is nothing to protect by waiting for it.
+loadDb()
+  .then(() => {
+    if (!token) return;
+    const idle = window.requestIdleCallback || ((f) => setTimeout(f, 1500));
+    idle(() => ensureXlsx().catch(() => {}));
+  })
+  .catch(() => {});
 
 // Edits live in this browser until they are saved, so leaving with some
 // still pending is worth a word.

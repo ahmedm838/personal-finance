@@ -22,7 +22,11 @@ const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'docs');
 const PUBLISHED = path.join(OUT, 'finance.xlsx');
 const RATES = path.join(OUT, 'rates.json');
-const XLSX_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+// The mini build reads and writes xlsx like the full one, at a quarter of the
+// size; the codepages it leaves out are for legacy formats this never sees.
+// It is served from docs/ and only loaded when a workbook must be parsed or
+// written, so it never blocks the first paint.
+const XLSX_LIB = path.join(path.dirname(require.resolve('xlsx/package.json')), 'dist', 'xlsx.mini.min.js');
 
 const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim();
 
@@ -94,10 +98,17 @@ function buildHtml(v) {
 
   // Pages caches these hard and the filenames never change, so without a
   // version in the URL a browser keeps running the previous deploy.
+  html = swap(
+    html,
+    '</title>',
+    '</title>\n<link rel="preconnect" href="https://api.github.com" crossorigin>'
+      + '\n<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>',
+  );
+
   return swap(
     html,
     '<script src="app.js"></script>',
-    `<script src="${XLSX_CDN}"></script>\n<script src="static-api.js?v=${v.api}"></script>\n<script src="app.js?v=${v.app}"></script>`,
+    `<script src="static-api.js?v=${v.api}"></script>\n<script src="app.js?v=${v.app}"></script>`,
   );
 }
 
@@ -128,7 +139,11 @@ async function main() {
   fs.mkdirSync(OUT, { recursive: true });
   if (rates) fs.writeFileSync(RATES, rates);
 
-  const config = `// --- repo config ---\nconst REPO = ${JSON.stringify(repoConfig())};\n`;
+  fs.copyFileSync(XLSX_LIB, path.join(OUT, 'xlsx.mini.min.js'));
+  const libStamp = crypto.createHash('sha256').update(fs.readFileSync(XLSX_LIB)).digest('hex').slice(0, 8);
+
+  const config = `// --- repo config ---\nconst REPO = ${JSON.stringify(repoConfig())};\n`
+    + `const XLSX_SRC = 'xlsx.mini.min.js?v=${libStamp}';\n`;
   const bundle = ['lib/schema.js', 'lib/sheet.js', 'lib/rows.js', 'lib/compute.js', 'static/api.js']
     .map(inline)
     .join('\n');
@@ -145,7 +160,7 @@ async function main() {
     css: stamp('styles.css'),
   }));
   fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
-  XLSX.writeFile(toWorkbook(db), PUBLISHED);
+  XLSX.writeFile(toWorkbook(db), PUBLISHED, { compression: true });
 
   for (const f of fs.readdirSync(OUT)) {
     console.log(`  ${f.padEnd(16)} ${fs.statSync(path.join(OUT, f)).size.toLocaleString()} bytes`);

@@ -65,8 +65,13 @@ Worth knowing:
 - Only `docs/finance.xlsx` is written. The local `data/finance.xlsx` is a
   separate, encrypted file and does not change — run `npm run pull:pages` to
   bring live edits into it.
-- A browser keeps its own copy of the database, so it does not re-download
-  the workbook on every load. It checks first: if the published file is no
+- A browser keeps its own copy of the database, already parsed, so it does
+  not re-download or re-read the workbook on every load. Connected, it asks
+  the repo for the file's id (a one-kilobyte listing) and downloads only when
+  that changed; without a token it revalidates the Pages copy. The SheetJS
+  library is self-hosted (the quarter-size mini build) and only fetched when
+  a workbook must actually be read or written, and the workbook is stored
+  deflated, roughly half its old size. It checks first: if the published file is no
   longer the one that copy came from — someone edited on another device, or
   the workbook was changed in the repo — the published file wins and the
   local copy is dropped. Unsaved edits made while disconnected would go with
